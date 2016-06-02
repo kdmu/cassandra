@@ -109,6 +109,5 @@ public class SSTableConverterTest extends CQLTester
                    row("second", 2, "value2"),
                    row("first",  1, "value1")
         );
-
     }
 }
