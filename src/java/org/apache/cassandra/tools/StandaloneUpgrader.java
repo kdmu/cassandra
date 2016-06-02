@@ -96,7 +96,7 @@ public class StandaloneUpgrader extends StandaloneConverter
             }
 
             int numSSTables = readers.size();
-            handler.output("Found " + numSSTables + " sstables that need upgrade.");
+            handler.output("Found " + numSSTables + " sstables that need upgrading.");
 
             for (SSTableReader sstable : readers)
             {
