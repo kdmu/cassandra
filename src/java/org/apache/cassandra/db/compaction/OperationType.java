@@ -26,6 +26,7 @@ public enum OperationType
     COUNTER_CACHE_SAVE("Counter cache save"),
     CLEANUP("Cleanup"),
     SCRUB("Scrub"),
+    CONVERT_SSTABLES("Converte sstables"),
     UPGRADE_SSTABLES("Upgrade sstables"),
     INDEX_BUILD("Secondary index build"),
     /** Compaction for tombstone removal */

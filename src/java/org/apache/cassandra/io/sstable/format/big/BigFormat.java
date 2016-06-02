@@ -17,7 +17,9 @@
  */
 package org.apache.cassandra.io.sstable.format.big;
 
+import java.util.Arrays;
 import java.util.Collection;
+import java.util.HashSet;
 import java.util.Set;
 
 import org.apache.cassandra.config.CFMetaData;
@@ -150,6 +152,12 @@ public class BigFormat implements SSTableFormat
          */
         private final boolean hasCompactionAncestors;
 
+        /**
+         * CASSANDRA-11875: auxiliar set containing all version supported for writing
+         * when a new version is added, should be also included into it.
+         */
+        private final Set<String> compatibleForWriting = new HashSet<String>(Arrays.asList(new String[] {"ma", "mb"}));
+
         BigVersion(String version)
         {
             super(instance, version);
@@ -280,6 +288,12 @@ public class BigFormat implements SSTableFormat
         public boolean isCompatibleForStreaming()
         {
             return isCompatible() && version.charAt(0) == current_version.charAt(0);
+        }
+
+        @Override
+        public boolean isCompatibleForWriting(String version)
+        {
+            return compatibleForWriting.contains(version);
         }
     }
 }

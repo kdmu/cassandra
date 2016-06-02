@@ -792,6 +792,11 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean
         return getSSTablePath(directory, DatabaseDescriptor.getSSTableFormat().info.getLatestVersion(), DatabaseDescriptor.getSSTableFormat());
     }
 
+    public String getSSTablePath(File directory, String version)
+    {
+        return getSSTablePath(directory, DatabaseDescriptor.getSSTableFormat().info.getVersion(version), DatabaseDescriptor.getSSTableFormat());
+    }
+
     public String getSSTablePath(File directory, SSTableFormat.Type format)
     {
         return getSSTablePath(directory, format.info.getLatestVersion(), format);
@@ -805,7 +810,7 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean
                                          name,
                                          fileIndexGenerator.incrementAndGet(),
                                          format,
-                                         Component.digestFor(BigFormat.latestVersion.uncompressedChecksumType()));
+                                         Component.digestFor(version.uncompressedChecksumType()));
         return desc.filenameFor(Component.DATA);
     }
 
