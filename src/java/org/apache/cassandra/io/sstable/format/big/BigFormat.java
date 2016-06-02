@@ -17,7 +17,9 @@
  */
 package org.apache.cassandra.io.sstable.format.big;
 
+import java.util.Arrays;
 import java.util.Collection;
+import java.util.HashSet;
 import java.util.Set;
 
 import org.apache.cassandra.config.CFMetaData;
@@ -112,6 +114,11 @@ public class BigFormat implements SSTableFormat
     {
         public static final String current_version = "mb";
         public static final String earliest_supported_version = "jb";
+        /**
+         * CASSANDRA-11875: auxiliar set containing all format supported for writing
+         * when a new version is added, should be also included into it.
+         */
+        private static final Set<String> supported_write_formats = new HashSet<String>(Arrays.asList(new String[] {"ma", "mb"}));
 
         // jb (2.0.1): switch from crc32 to adler32 for compression checksums
         //             checksum the compressed data
@@ -149,6 +156,7 @@ public class BigFormat implements SSTableFormat
          * CASSANDRA-7066: compaction ancerstors are no longer used and have been removed.
          */
         private final boolean hasCompactionAncestors;
+
 
         BigVersion(String version)
         {
@@ -280,6 +288,12 @@ public class BigFormat implements SSTableFormat
         public boolean isCompatibleForStreaming()
         {
             return isCompatible() && version.charAt(0) == current_version.charAt(0);
+        }
+
+        @Override
+        public boolean isCompatibleForWriting()
+        {
+            return supported_write_formats.contains(version);
         }
     }
 }

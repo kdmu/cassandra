@@ -20,8 +20,8 @@ package org.apache.cassandra.tools;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
 
+import org.apache.cassandra.db.compaction.SSTableConverter;
 import org.apache.cassandra.io.sstable.format.SSTableReader;
-import org.apache.commons.cli.*;
 
 import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.config.Schema;
@@ -30,24 +30,22 @@ import org.apache.cassandra.db.Directories;
 import org.apache.cassandra.db.Keyspace;
 import org.apache.cassandra.db.compaction.CompactionManager;
 import org.apache.cassandra.db.compaction.OperationType;
-import org.apache.cassandra.db.compaction.Upgrader;
 import org.apache.cassandra.db.lifecycle.LifecycleTransaction;
 import org.apache.cassandra.io.sstable.*;
 import org.apache.cassandra.utils.JVMStabilityInspector;
 import org.apache.cassandra.utils.OutputHandler;
 
-import static org.apache.cassandra.tools.BulkLoader.CmdLineOptions;
-
-public class StandaloneUpgrader
+public class StandaloneUpgrader extends StandaloneConverter
 {
-    private static final String TOOL_NAME = "sstableupgrade";
-    private static final String DEBUG_OPTION  = "debug";
-    private static final String HELP_OPTION  = "help";
-    private static final String KEEP_SOURCE = "keep-source";
-
     public static void main(String args[])
     {
-        Options options = Options.parseArgs(args);
+        Options options = Options.parseArgs(args, true);
+
+        if (!DatabaseDescriptor.getSSTableFormat().info.getVersion(options.version).isCompatibleForWriting())
+        {
+            throw new RuntimeException(String.format("Conversion to %s is not supported", options.version));
+        }
+
         Util.initDatabaseDescriptor();
 
         try
@@ -98,14 +96,14 @@ public class StandaloneUpgrader
             }
 
             int numSSTables = readers.size();
-            handler.output("Found " + numSSTables + " sstables that need upgrading.");
+            handler.output("Found " + numSSTables + " sstables that need upgrade.");
 
             for (SSTableReader sstable : readers)
             {
                 try (LifecycleTransaction txn = LifecycleTransaction.offline(OperationType.UPGRADE_SSTABLES, sstable))
                 {
-                    Upgrader upgrader = new Upgrader(cfs, txn, handler);
-                    upgrader.upgrade(options.keepSource);
+                    SSTableConverter converter = new SSTableConverter(cfs, txn, handler, options.version);
+                    converter.convert(options.keepSource);
                 }
                 catch (Exception e)
                 {
@@ -130,99 +128,6 @@ public class StandaloneUpgrader
             if (options.debug)
                 e.printStackTrace(System.err);
             System.exit(1);
-        }
-    }
-
-    private static class Options
-    {
-        public final String keyspace;
-        public final String cf;
-        public final String snapshot;
-
-        public boolean debug;
-        public boolean keepSource;
-
-        private Options(String keyspace, String cf, String snapshot)
-        {
-            this.keyspace = keyspace;
-            this.cf = cf;
-            this.snapshot = snapshot;
-        }
-
-        public static Options parseArgs(String cmdArgs[])
-        {
-            CommandLineParser parser = new GnuParser();
-            CmdLineOptions options = getCmdLineOptions();
-            try
-            {
-                CommandLine cmd = parser.parse(options, cmdArgs, false);
-
-                if (cmd.hasOption(HELP_OPTION))
-                {
-                    printUsage(options);
-                    System.exit(0);
-                }
-
-                String[] args = cmd.getArgs();
-                if (args.length >= 4 || args.length < 2)
-                {
-                    String msg = args.length < 2 ? "Missing arguments" : "Too many arguments";
-                    errorMsg(msg, options);
-                    System.exit(1);
-                }
-
-                String keyspace = args[0];
-                String cf = args[1];
-                String snapshot = null;
-                if (args.length == 3)
-                    snapshot = args[2];
-
-                Options opts = new Options(keyspace, cf, snapshot);
-
-                opts.debug = cmd.hasOption(DEBUG_OPTION);
-                opts.keepSource = cmd.hasOption(KEEP_SOURCE);
-
-                return opts;
-            }
-            catch (ParseException e)
-            {
-                errorMsg(e.getMessage(), options);
-                return null;
-            }
-        }
-
-        private static void errorMsg(String msg, CmdLineOptions options)
-        {
-            System.err.println(msg);
-            printUsage(options);
-            System.exit(1);
-        }
-
-        private static CmdLineOptions getCmdLineOptions()
-        {
-            CmdLineOptions options = new CmdLineOptions();
-            options.addOption(null, DEBUG_OPTION,          "display stack traces");
-            options.addOption("h",  HELP_OPTION,           "display this help message");
-            options.addOption("k",  KEEP_SOURCE,           "do not delete the source sstables");
-            return options;
-        }
-
-        public static void printUsage(CmdLineOptions options)
-        {
-            String usage = String.format("%s [options] <keyspace> <cf> [snapshot]", TOOL_NAME);
-            StringBuilder header = new StringBuilder();
-            header.append("--\n");
-            header.append("Upgrade the sstables in the given cf (or snapshot) to the current version of Cassandra." );
-            header.append("This operation will rewrite the sstables in the specified cf to match the " );
-            header.append("currently installed version of Cassandra.\n");
-            header.append("The snapshot option will only upgrade the specified snapshot. Upgrading " );
-            header.append("snapshots is required before attempting to restore a snapshot taken in a " );
-            header.append("major version older than the major version Cassandra is currently running. " );
-            header.append("This will replace the files in the given snapshot as well as break any " );
-            header.append("hard links to live sstables." );
-            header.append("\n--\n");
-            header.append("Options are:");
-            new HelpFormatter().printHelp(usage, header.toString(), options, "");
         }
     }
 }

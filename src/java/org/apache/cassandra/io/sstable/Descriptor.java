@@ -336,6 +336,11 @@ public class Descriptor
         return version.isCompatible();
     }
 
+    public boolean isCompatibleForWriting()
+    {
+        return version.isCompatibleForWriting();
+    }
+
     @Override
     public String toString()
     {

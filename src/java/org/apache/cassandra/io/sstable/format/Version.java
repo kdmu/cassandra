@@ -94,6 +94,7 @@ public abstract class Version
 
     abstract public boolean isCompatible();
     abstract public boolean isCompatibleForStreaming();
+    abstract public boolean isCompatibleForWriting();
 
     @Override
     public String toString()
