@@ -468,9 +468,11 @@ public class RowIndexEntry<T> implements IMeasurableMemory
         }
 
         @Override
-        public void serialize(DataOutputPlus out, IndexInfo.Serializer idxInfoSerializer, ByteBuffer indexInfo)
+        public void serialize(DataOutputPlus out, IndexInfo.Serializer idxInfoSerializer, ByteBuffer indexInfo) throws IOException
         {
-            throw new UnsupportedOperationException("serializing legacy index entries is not supported");
+            // 2.2 -> we should write long instead of unsigned int
+            out.writeLong(position);
+            out.writeLong(0);
         }
 
         @Override
