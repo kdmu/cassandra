@@ -3666,7 +3666,7 @@ public class StorageService extends NotificationBroadcasterSupport implements IE
             throw new UnsupportedOperationException("Node in " + operationMode + " state; wait for status to become normal or restart");
 
         if (logger.isDebugEnabled())
-            if (isDecommissioning.getAndSet(true) == true)
+            if (isDecommissioning.compareAndSet(true, true))
                 logger.debug("RESUMING PREVIOUS DECOMMISSION");
             else
                 logger.debug("DECOMMISSIONING");
