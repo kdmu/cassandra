@@ -166,6 +166,8 @@ public class StorageService extends NotificationBroadcasterSupport implements IE
     /* Are we starting this node in bootstrap mode? */
     private volatile boolean isBootstrapMode;
 
+    private final AtomicBoolean isDecommissioning = new AtomicBoolean(false);
+
     /* we bootstrap but do NOT join the ring unless told to do so */
     private boolean isSurveyMode = Boolean.parseBoolean(System.getProperty("cassandra.write_survey", "false"));
     /* true if node is rebuilding and receiving data */
@@ -3660,8 +3662,14 @@ public class StorageService extends NotificationBroadcasterSupport implements IE
             throw new UnsupportedOperationException("local node is not a member of the token ring yet");
         if (tokenMetadata.cloneAfterAllLeft().sortedTokens().size() < 2)
             throw new UnsupportedOperationException("no other normal nodes in the ring; decommission would be pointless");
-        if (operationMode != Mode.NORMAL)
+        if (isDecommissioning.get() == false && operationMode != Mode.NORMAL)
             throw new UnsupportedOperationException("Node in " + operationMode + " state; wait for status to become normal or restart");
+
+        if (logger.isDebugEnabled())
+            if (isDecommissioning.getAndSet(true) == true)
+                logger.debug("RESUMING PREVIOUS DECOMMISSION");
+            else
+                logger.debug("DECOMMISSIONING");
 
         PendingRangeCalculatorService.instance.blockUntilFinished();
         for (String keyspaceName : Schema.instance.getNonLocalStrategyKeyspaces())
@@ -3670,8 +3678,6 @@ public class StorageService extends NotificationBroadcasterSupport implements IE
                 throw new UnsupportedOperationException("data is currently moving to this node; unable to leave the ring");
         }
 
-        if (logger.isDebugEnabled())
-            logger.debug("DECOMMISSIONING");
         startLeaving();
         long timeout = Math.max(RING_DELAY, BatchlogManager.instance.getBatchlogTimeout());
         setMode(Mode.LEAVING, "sleeping " + timeout + " ms for batch processing and pending range setup", true);
@@ -3758,6 +3764,7 @@ public class StorageService extends NotificationBroadcasterSupport implements IE
         logger.debug("stream acks all received.");
         leaveRing();
         onFinish.run();
+        isDecommissioning.set(false);
     }
 
     private Future streamHints()
