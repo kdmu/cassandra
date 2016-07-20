@@ -45,8 +45,6 @@ import org.apache.cassandra.io.sstable.format.SSTableReader;
 import org.apache.cassandra.repair.SystemDistributedKeyspace;
 import org.apache.cassandra.service.StorageProxy;
 import org.apache.cassandra.service.StorageService;
-import org.apache.cassandra.service.pager.QueryPager;
-import org.apache.cassandra.transport.Server;
 import org.apache.cassandra.utils.FBUtilities;
 import org.apache.cassandra.utils.Pair;
 import org.apache.cassandra.utils.UUIDGen;
@@ -72,7 +70,6 @@ public class ViewBuilder extends CompactionInfo.Holder
 
     private void buildKey(DecoratedKey key)
     {
-        AtomicLong noBase = new AtomicLong(Long.MAX_VALUE);
         ReadQuery selectQuery = view.getReadQuery();
         if (!selectQuery.selectsKey(key))
             return;
@@ -92,7 +89,10 @@ public class ViewBuilder extends CompactionInfo.Holder
         }
 
         if (!mutations.isEmpty())
+        {
+            AtomicLong noBase = new AtomicLong(Long.MAX_VALUE);
             StorageProxy.mutateMV(key.getKey(), mutations, true, noBase);
+        }
     }
 
     public void run()
@@ -115,7 +115,7 @@ public class ViewBuilder extends CompactionInfo.Holder
         if (buildStatus == null)
         {
             baseCfs.forceBlockingFlush();
-            function = org.apache.cassandra.db.lifecycle.View.select(SSTableSet.CANONICAL);
+            function = org.apache.cassandra.db.lifecycle.View.selectFunction(SSTableSet.CANONICAL);
             int generation = Integer.MIN_VALUE;
 
             try (Refs<SSTableReader> temp = baseCfs.selectAndReference(function).refs)
@@ -136,7 +136,7 @@ public class ViewBuilder extends CompactionInfo.Holder
                 @Nullable
                 public Iterable<SSTableReader> apply(org.apache.cassandra.db.lifecycle.View view)
                 {
-                    Iterable<SSTableReader> readers = org.apache.cassandra.db.lifecycle.View.select(SSTableSet.CANONICAL).apply(view);
+                    Iterable<SSTableReader> readers = org.apache.cassandra.db.lifecycle.View.selectFunction(SSTableSet.CANONICAL).apply(view);
                     if (readers != null)
                         return Iterables.filter(readers, ssTableReader -> ssTableReader.descriptor.generation <= buildStatus.left);
                     return null;

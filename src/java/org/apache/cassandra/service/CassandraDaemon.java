@@ -48,6 +48,7 @@ import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.config.Schema;
 import org.apache.cassandra.cql3.functions.ThreadAwareSecurityManager;
+import org.apache.cassandra.cql3.QueryProcessor;
 import org.apache.cassandra.db.*;
 import org.apache.cassandra.db.commitlog.CommitLog;
 import org.apache.cassandra.exceptions.ConfigurationException;
@@ -205,6 +206,10 @@ public class CassandraDaemon
             exitOrFail(3, e.getMessage(), e.getCause());
         }
 
+        // We need to persist this as soon as possible after startup checks.
+        // This should be the first write to SystemKeyspace (CASSANDRA-11742)
+        SystemKeyspace.persistLocalMetadata();
+
         maybeInitJmx();
 
         Thread.setDefaultUncaughtExceptionHandler(new Thread.UncaughtExceptionHandler()
@@ -306,10 +311,10 @@ public class CassandraDaemon
             logger.warn("Unable to start GCInspector (currently only supported on the Sun JVM)");
         }
 
-        // replay the log if necessary
+        // Replay any CommitLogSegments found on disk
         try
         {
-            CommitLog.instance.recover();
+            CommitLog.instance.recoverSegmentsOnDisk();
         }
         catch (IOException e)
         {
@@ -339,6 +344,9 @@ public class CassandraDaemon
         }
 
         SystemKeyspace.finishStartup();
+
+        // Prepared statements
+        QueryProcessor.preloadPreparedStatement();
 
         // Metrics
         String metricsReporterConfigFile = System.getProperty("cassandra.metricsReporterConfigFile");
@@ -380,6 +388,7 @@ public class CassandraDaemon
             {
                 keyspace.viewManager.buildAllViews();
             }
+            logger.debug("Completed submission of build tasks for any materialized views defined at startup");
         };
 
         ScheduledExecutors.optionalTasks.schedule(viewRebuild, StorageService.RING_DELAY, TimeUnit.MILLISECONDS);

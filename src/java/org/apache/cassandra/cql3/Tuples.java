@@ -26,7 +26,6 @@ import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import org.apache.cassandra.cql3.Term.MultiColumnRaw;
 import org.apache.cassandra.cql3.functions.Function;
 import org.apache.cassandra.db.marshal.*;
 import org.apache.cassandra.exceptions.InvalidRequestException;
@@ -134,6 +133,20 @@ public class Tuples
             {
                 return AssignmentTestable.TestResult.NOT_ASSIGNABLE;
             }
+        }
+
+        @Override
+        public AbstractType<?> getExactTypeIfKnown(String keyspace)
+        {
+            List<AbstractType<?>> types = new ArrayList<>(elements.size());
+            for (Term.Raw term : elements)
+            {
+                AbstractType<?> type = term.getExactTypeIfKnown(keyspace);
+                if (type == null)
+                    return null;
+                types.add(type);
+            }
+            return new TupleType(types);
         }
 
         public String getText()
@@ -326,6 +339,11 @@ public class Tuples
             return new ColumnSpecification(receivers.get(0).ksName, receivers.get(0).cfName, identifier, type);
         }
 
+        public AbstractType<?> getExactTypeIfKnown(String keyspace)
+        {
+            return null;
+        }
+
         public AbstractMarker prepare(String keyspace, List<? extends ColumnSpecification> receivers) throws InvalidRequestException
         {
             return new Tuples.Marker(bindIndex, makeReceiver(receivers));
@@ -363,6 +381,11 @@ public class Tuples
             ColumnIdentifier identifier = new ColumnIdentifier(inName.toString(), true);
             TupleType type = new TupleType(types);
             return new ColumnSpecification(receivers.get(0).ksName, receivers.get(0).cfName, identifier, ListType.getInstance(type, false));
+        }
+
+        public AbstractType<?> getExactTypeIfKnown(String keyspace)
+        {
+            return null;
         }
 
         public AbstractMarker prepare(String keyspace, List<? extends ColumnSpecification> receivers) throws InvalidRequestException

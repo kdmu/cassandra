@@ -1,3 +1,23 @@
+/*
+ *
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ *
+ */
 package org.apache.cassandra.index;
 
 import java.util.Collection;
@@ -55,7 +75,7 @@ import org.apache.cassandra.utils.concurrent.OpOrder;
  * scheduling its execution can rest with SecondaryIndexManager. For instance, a task like reloading index metadata
  * following potential updates caused by modifications to the base table may be performed in a blocking way. In
  * contrast, adding a new index may require it to be built from existing SSTable data, a potentially expensive task
- * which should be performed asyncronously.
+ * which should be performed asynchronously.
  *
  * Index Selection:
  * There are two facets to index selection, write time and read time selection. The former is concerned with
@@ -88,7 +108,7 @@ import org.apache.cassandra.utils.concurrent.OpOrder;
  * whether any of them are supported by a registered Index. supportsExpression is used to filter out Indexes which
  * cannot support a given Expression. After filtering, the set of candidate indexes are ranked according to the result
  * of getEstimatedResultRows and the most selective (i.e. the one expected to return the smallest number of results) is
- * chosen. A Searcher instance is then obtained from the searcherFor method & used to perform the actual Index lookup.
+ * chosen. A Searcher instance is then obtained from the searcherFor method and used to perform the actual Index lookup.
  * Finally, Indexes can define a post processing step to be performed on the coordinator, after results (partitions from
  * the primary table) have been received from replicas and reconciled. This post processing is defined as a
  * java.util.functions.BiFunction<PartitionIterator, RowFilter, PartitionIterator>, that is a function which takes as

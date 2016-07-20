@@ -21,7 +21,6 @@ import java.net.InetAddress;
 import java.util.*;
 
 import com.google.common.base.Predicate;
-import com.google.common.collect.Sets;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.google.common.util.concurrent.MoreExecutors;
 import org.slf4j.Logger;
@@ -30,8 +29,6 @@ import org.slf4j.LoggerFactory;
 import org.apache.cassandra.db.ColumnFamilyStore;
 import org.apache.cassandra.db.compaction.CompactionManager;
 import org.apache.cassandra.dht.Bounds;
-import org.apache.cassandra.dht.Range;
-import org.apache.cassandra.dht.Token;
 import org.apache.cassandra.io.sstable.format.SSTableReader;
 import org.apache.cassandra.net.IVerbHandler;
 import org.apache.cassandra.net.MessageIn;
@@ -90,27 +87,23 @@ public class RepairMessageVerbHandler implements IVerbHandler<RepairMessage>
                                                                      desc.keyspace, desc.columnFamily), message.from, id);
                         return;
                     }
-                    final Collection<Range<Token>> repairingRange = desc.ranges;
-                    Set<SSTableReader> snapshottedSSSTables = cfs.snapshot(desc.sessionId.toString(), new Predicate<SSTableReader>()
+
+                    ActiveRepairService.ParentRepairSession prs = ActiveRepairService.instance.getParentRepairSession(desc.parentSessionId);
+                    if (prs.isGlobal)
                     {
-                        public boolean apply(SSTableReader sstable)
-                        {
-                            return sstable != null &&
-                                   !sstable.metadata.isIndex() && // exclude SSTables from 2i
-                                   new Bounds<>(sstable.first.getToken(), sstable.last.getToken()).intersects(repairingRange);
-                        }
-                    }, true, false); //ephemeral snapshot, if repair fails, it will be cleaned next startup
-                    if (ActiveRepairService.instance.getParentRepairSession(desc.parentSessionId).isGlobal)
+                        prs.maybeSnapshot(cfs.metadata.cfId, desc.parentSessionId);
+                    }
+                    else
                     {
-                        Set<SSTableReader> currentlyRepairing = ActiveRepairService.instance.currentlyRepairing(cfs.metadata.cfId, desc.parentSessionId);
-                        if (!Sets.intersection(currentlyRepairing, snapshottedSSSTables).isEmpty())
+                        cfs.snapshot(desc.sessionId.toString(), new Predicate<SSTableReader>()
                         {
-                            // clear snapshot that we just created
-                            cfs.clearSnapshot(desc.sessionId.toString());
-                            logErrorAndSendFailureResponse("Cannot start multiple repair sessions over the same sstables", message.from, id);
-                            return;
-                        }
-                        ActiveRepairService.instance.getParentRepairSession(desc.parentSessionId).addSSTables(cfs.metadata.cfId, snapshottedSSSTables);
+                            public boolean apply(SSTableReader sstable)
+                            {
+                                return sstable != null &&
+                                       !sstable.metadata.isIndex() && // exclude SSTables from 2i
+                                       new Bounds<>(sstable.first.getToken(), sstable.last.getToken()).intersects(desc.ranges);
+                            }
+                        }, true, false); //ephemeral snapshot, if repair fails, it will be cleaned next startup
                     }
                     logger.debug("Enqueuing response to snapshot request {} to {}", desc.sessionId, message.from);
                     MessagingService.instance().sendReply(new MessageOut(MessagingService.Verb.INTERNAL_RESPONSE), id, message.from);

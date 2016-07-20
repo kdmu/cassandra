@@ -314,6 +314,11 @@ public class Schema
         return getCFMetaData(descriptor.ksname, descriptor.cfname);
     }
 
+    public int getNumberOfTables()
+    {
+        return cfIdMap.size();
+    }
+
     public ViewDefinition getView(String keyspaceName, String viewName)
     {
         assert keyspaceName != null;
@@ -606,7 +611,7 @@ public class Schema
     public void dropKeyspace(String ksName)
     {
         KeyspaceMetadata ksm = Schema.instance.getKSMetaData(ksName);
-        String snapshotName = Keyspace.getTimestampedSnapshotName(ksName);
+        String snapshotName = Keyspace.getTimestampedSnapshotNameWithPrefix(ksName, ColumnFamilyStore.SNAPSHOT_DROP_PREFIX);
 
         CompactionManager.instance.interruptCompactionFor(ksm.tablesAndViews(), true);
 
@@ -644,15 +649,13 @@ public class Schema
         assert getCFMetaData(cfm.ksName, cfm.cfName) == null;
 
         // Make sure the keyspace is initialized
-        Keyspace.open(cfm.ksName);
+        // and init the new CF before switching the KSM to the new one
+        // to avoid races as in CASSANDRA-10761
+        Keyspace.open(cfm.ksName).initCf(cfm, true);
         // Update the keyspaces map with the updated metadata
         update(cfm.ksName, ks -> ks.withSwapped(ks.tables.with(cfm)));
         // Update the table ID <-> table name map (cfIdMap)
         load(cfm);
-
-        // init the new CF before switching the KSM to the new one
-        // to avoid races as in CASSANDRA-10761
-        Keyspace.open(cfm.ksName).initCf(cfm, true);
         MigrationManager.instance.notifyCreateColumnFamily(cfm);
     }
 
@@ -687,7 +690,7 @@ public class Schema
         CompactionManager.instance.interruptCompactionFor(Collections.singleton(cfm), true);
 
         if (DatabaseDescriptor.isAutoSnapshot())
-            cfs.snapshot(Keyspace.getTimestampedSnapshotName(cfs.name));
+            cfs.snapshot(Keyspace.getTimestampedSnapshotNameWithPrefix(cfs.name, ColumnFamilyStore.SNAPSHOT_DROP_PREFIX));
         Keyspace.open(ksName).dropCf(cfm.cfId);
         MigrationManager.instance.notifyDropColumnFamily(cfm);
 

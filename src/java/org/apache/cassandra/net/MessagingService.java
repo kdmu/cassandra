@@ -67,6 +67,7 @@ import org.apache.cassandra.io.util.FileUtils;
 import org.apache.cassandra.locator.ILatencySubscriber;
 import org.apache.cassandra.metrics.ConnectionMetrics;
 import org.apache.cassandra.metrics.DroppedMessageMetrics;
+import org.apache.cassandra.metrics.MessagingMetrics;
 import org.apache.cassandra.repair.messages.RepairMessage;
 import org.apache.cassandra.security.SSLFactory;
 import org.apache.cassandra.service.*;
@@ -100,6 +101,8 @@ public final class MessagingService implements MessagingServiceMBean
 
     private boolean allNodesAtLeast22 = true;
     private boolean allNodesAtLeast30 = true;
+
+    public final MessagingMetrics metrics = new MessagingMetrics();
 
     /* All verb handler identifiers */
     public enum Verb
@@ -215,9 +218,9 @@ public final class MessagingService implements MessagingServiceMBean
 
         put(Verb.MUTATION, Mutation.serializer);
         put(Verb.READ_REPAIR, Mutation.serializer);
-        put(Verb.READ, ReadCommand.serializer);
+        put(Verb.READ, ReadCommand.readSerializer);
         put(Verb.RANGE_SLICE, ReadCommand.rangeSliceSerializer);
-        put(Verb.PAGED_RANGE, ReadCommand.legacyPagedRangeCommandSerializer);
+        put(Verb.PAGED_RANGE, ReadCommand.pagedRangeSerializer);
         put(Verb.BOOTSTRAP_TOKEN, BootStrapper.StringSerializer.instance);
         put(Verb.REPAIR_MESSAGE, RepairMessage.serializer);
         put(Verb.GOSSIP_DIGEST_ACK, GossipDigestAck.serializer);
@@ -247,7 +250,7 @@ public final class MessagingService implements MessagingServiceMBean
         put(Verb.READ_REPAIR, WriteResponse.serializer);
         put(Verb.COUNTER_MUTATION, WriteResponse.serializer);
         put(Verb.RANGE_SLICE, ReadResponse.rangeSliceSerializer);
-        put(Verb.PAGED_RANGE, ReadResponse.legacyRangeSliceReplySerializer);
+        put(Verb.PAGED_RANGE, ReadResponse.rangeSliceSerializer);
         put(Verb.READ, ReadResponse.serializer);
         put(Verb.TRUNCATE, TruncateResponse.serializer);
         put(Verb.SNAPSHOT, null);
@@ -348,6 +351,11 @@ public final class MessagingService implements MessagingServiceMBean
     public void addMessageSink(IMessageSink sink)
     {
         messageSinks.add(sink);
+    }
+
+    public void removeMessageSink(IMessageSink sink)
+    {
+        messageSinks.remove(sink);
     }
 
     public void clearMessageSinks()
@@ -1064,10 +1072,12 @@ public final class MessagingService implements MessagingServiceMBean
         return ret;
     }
 
-    private static class SocketThread extends Thread
+    @VisibleForTesting
+    public static class SocketThread extends Thread
     {
         private final ServerSocket server;
-        private final Set<Closeable> connections = Sets.newConcurrentHashSet();
+        @VisibleForTesting
+        public final Set<Closeable> connections = Sets.newConcurrentHashSet();
 
         SocketThread(ServerSocket server, String name)
         {
@@ -1287,5 +1297,11 @@ public final class MessagingService implements MessagingServiceMBean
             throw new AssertionError(String.format("Partitioner in bounds serialization. Expected %s, was %s.",
                                                    globalPartitioner().getClass().getName(),
                                                    bounds.left.getPartitioner().getClass().getName()));
+    }
+
+    @VisibleForTesting
+    public List<SocketThread> getSocketThreads()
+    {
+        return socketThreads;
     }
 }

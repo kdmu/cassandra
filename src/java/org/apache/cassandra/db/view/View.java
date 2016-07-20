@@ -17,9 +17,7 @@
  */
 package org.apache.cassandra.db.view;
 
-import java.nio.ByteBuffer;
 import java.util.*;
-import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 import javax.annotation.Nullable;
@@ -31,16 +29,11 @@ import org.apache.cassandra.cql3.statements.ParsedStatement;
 import org.apache.cassandra.cql3.statements.SelectStatement;
 import org.apache.cassandra.db.*;
 import org.apache.cassandra.config.*;
-import org.apache.cassandra.cql3.ColumnIdentifier;
 import org.apache.cassandra.db.compaction.CompactionManager;
-import org.apache.cassandra.db.partitions.*;
 import org.apache.cassandra.db.rows.*;
 import org.apache.cassandra.schema.KeyspaceMetadata;
 import org.apache.cassandra.service.ClientState;
-import org.apache.cassandra.service.pager.QueryPager;
-import org.apache.cassandra.transport.Server;
 import org.apache.cassandra.utils.FBUtilities;
-import org.apache.cassandra.utils.btree.BTreeSet;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -88,15 +81,11 @@ public class View
 
     /**
      * This updates the columns stored which are dependent on the base CFMetaData.
-     *
-     * @return true if the view contains only columns which are part of the base's primary key; false if there is at
-     *         least one column which is not.
      */
     public void updateDefinition(ViewDefinition definition)
     {
         this.definition = definition;
 
-        CFMetaData viewCfm = definition.metadata;
         List<ColumnDefinition> nonPKDefPartOfViewPK = new ArrayList<>();
         for (ColumnDefinition baseColumn : baseCfs.metadata.allColumns())
         {
@@ -262,12 +251,12 @@ public class View
             if (rel.isMultiColumn())
             {
                 sb.append(((MultiColumnRelation) rel).getEntities().stream()
-                        .map(ColumnIdentifier.Raw::toCQLString)
+                        .map(ColumnDefinition.Raw::toString)
                         .collect(Collectors.joining(", ", "(", ")")));
             }
             else
             {
-                sb.append(((SingleColumnRelation) rel).getEntity().toCQLString());
+                sb.append(((SingleColumnRelation) rel).getEntity());
             }
 
             sb.append(" ").append(rel.operator()).append(" ");

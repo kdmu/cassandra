@@ -116,6 +116,7 @@ public final class SchemaKeyspace
                 + "min_index_interval int,"
                 + "read_repair_chance double,"
                 + "speculative_retry text,"
+                + "cdc boolean,"
                 + "PRIMARY KEY ((keyspace_name), table_name))");
 
     private static final CFMetaData Columns =
@@ -179,6 +180,7 @@ public final class SchemaKeyspace
                 + "min_index_interval int,"
                 + "read_repair_chance double,"
                 + "speculative_retry text,"
+                + "cdc boolean,"
                 + "PRIMARY KEY ((keyspace_name), view_name))");
 
     private static final CFMetaData Indexes =
@@ -433,7 +435,7 @@ public final class SchemaKeyspace
     {
         RowUpdateBuilder adder = new RowUpdateBuilder(Types, timestamp, mutation)
                                  .clustering(type.getNameAsString())
-                                 .frozenList("field_names", type.fieldNames().stream().map(SchemaKeyspace::bbToString).collect(toList()))
+                                 .frozenList("field_names", type.fieldNames().stream().map(FieldIdentifier::toString).collect(toList()))
                                  .frozenList("field_types", type.fieldTypes().stream().map(AbstractType::asCQL3Type).map(CQL3Type::toString).collect(toList()));
 
         adder.build();
@@ -508,7 +510,8 @@ public final class SchemaKeyspace
              .frozenMap("caching", params.caching.asMap())
              .frozenMap("compaction", params.compaction.asMap())
              .frozenMap("compression", params.compression.asMap())
-             .frozenMap("extensions", params.extensions);
+             .frozenMap("extensions", params.extensions)
+             .add("cdc", params.cdc);
     }
 
     public static Mutation makeUpdateTableMutation(KeyspaceMetadata keyspace,
@@ -948,6 +951,12 @@ public final class SchemaKeyspace
         boolean isCompound = flags.contains(CFMetaData.Flag.COMPOUND);
 
         List<ColumnDefinition> columns = fetchColumns(keyspaceName, tableName, types);
+        if (!columns.stream().anyMatch(ColumnDefinition::isPartitionKey))
+        {
+            String msg = String.format("Table %s.%s did not have any partition key columns in the schema tables", keyspaceName, tableName);
+            throw new AssertionError(msg);
+        }
+
         Map<ByteBuffer, CFMetaData.DroppedColumn> droppedColumns = fetchDroppedColumns(keyspaceName, tableName);
         Indexes indexes = fetchIndexes(keyspaceName, tableName);
         Triggers triggers = fetchTriggers(keyspaceName, tableName);
@@ -986,6 +995,7 @@ public final class SchemaKeyspace
                           .readRepairChance(row.getDouble("read_repair_chance"))
                           .crcCheckChance(row.getDouble("crc_check_chance"))
                           .speculativeRetry(SpeculativeRetryParam.fromString(row.getString("speculative_retry")))
+                          .cdc(row.has("cdc") ? row.getBoolean("cdc") : false)
                           .build();
     }
 

@@ -51,6 +51,7 @@ class Cql3ParsingRuleSet(CqlParsingRuleSet):
         ('default_time_to_live', None),
         ('speculative_retry', None),
         ('memtable_flush_period_in_ms', None),
+        ('cdc', None)
     )
 
     columnfamily_layout_map_options = (
@@ -478,6 +479,8 @@ def cf_prop_val_completer(ctxt, cass):
     if this_opt in ('min_compaction_threshold', 'max_compaction_threshold',
                     'gc_grace_seconds', 'min_index_interval', 'max_index_interval'):
         return [Hint('<integer>')]
+    if this_opt in ('cdc'):
+        return [Hint('<true|false>')]
     return [Hint('<option_value>')]
 
 
@@ -515,6 +518,13 @@ def cf_prop_val_mapkey_completer(ctxt, cass):
             opts.add('min_threshold')
             opts.add('max_window_size_seconds')
             opts.add('timestamp_resolution')
+        elif csc == 'TimeWindowCompactionStrategy':
+            opts.add('compaction_window_unit')
+            opts.add('compaction_window_size')
+            opts.add('min_threshold')
+            opts.add('max_threshold')
+            opts.add('timestamp_resolution')
+
         return map(escape_value, opts)
     return ()
 
@@ -695,6 +705,7 @@ syntax_rules += r'''
              | "COUNT" "(" star=( "*" | "1" ) ")"
              | "CAST" "(" <selector> "AS" <storageType> ")"
              | <functionName> <selectionFunctionArguments>
+             | <term>
              ;
 <selectionFunctionArguments> ::= "(" ( <selector> ( "," <selector> )* )? ")"
                           ;
@@ -1117,7 +1128,7 @@ syntax_rules += r'''
                                 ;
 
 <cfamProperty> ::= <property>
-                 | "COMPACT" "STORAGE"
+                 | "COMPACT" "STORAGE" "CDC"
                  | "CLUSTERING" "ORDER" "BY" "(" <cfamOrdering>
                                                  ( "," <cfamOrdering> )* ")"
                  ;

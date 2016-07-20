@@ -21,7 +21,6 @@ import java.nio.ByteBuffer;
 import java.util.*;
 
 import com.google.common.base.MoreObjects;
-import com.google.common.base.Objects;
 import com.google.common.base.Predicate;
 import com.google.common.collect.Iterables;
 import com.google.common.collect.Iterators;
@@ -169,12 +168,12 @@ public abstract class Selection
         return false;
     }
 
-    public static Selection fromSelectors(CFMetaData cfm, List<RawSelector> rawSelectors) throws InvalidRequestException
+    public static Selection fromSelectors(CFMetaData cfm, List<RawSelector> rawSelectors, VariableSpecifications boundNames) throws InvalidRequestException
     {
         List<ColumnDefinition> defs = new ArrayList<>();
 
         SelectorFactories factories =
-                SelectorFactories.createFactoriesAndCollectColumnDefinitions(RawSelector.toSelectables(rawSelectors, cfm), cfm, defs);
+                SelectorFactories.createFactoriesAndCollectColumnDefinitions(RawSelector.toSelectables(rawSelectors, cfm), null, cfm, defs, boundNames);
         SelectionColumnMapping mapping = collectColumnMappings(cfm, rawSelectors, factories);
 
         return (processesSelection(rawSelectors) || rawSelectors.size() != defs.size())
@@ -221,7 +220,7 @@ public abstract class Selection
         return selectionColumns;
     }
 
-    protected abstract Selectors newSelectors() throws InvalidRequestException;
+    protected abstract Selectors newSelectors(QueryOptions options) throws InvalidRequestException;
 
     /**
      * @return the list of CQL3 columns value this SelectionClause needs.
@@ -239,9 +238,9 @@ public abstract class Selection
         return columnMapping;
     }
 
-    public ResultSetBuilder resultSetBuilder(boolean isJons) throws InvalidRequestException
+    public ResultSetBuilder resultSetBuilder(QueryOptions options, boolean isJons) throws InvalidRequestException
     {
-        return new ResultSetBuilder(isJons);
+        return new ResultSetBuilder(options, isJons);
     }
 
     public abstract boolean isAggregate();
@@ -287,6 +286,7 @@ public abstract class Selection
     public class ResultSetBuilder
     {
         private final ResultSet resultSet;
+        private final int protocolVersion;
 
         /**
          * As multiple thread can access a <code>Selection</code> instance each <code>ResultSetBuilder</code> will use
@@ -308,10 +308,11 @@ public abstract class Selection
 
         private final boolean isJson;
 
-        private ResultSetBuilder(boolean isJson) throws InvalidRequestException
+        private ResultSetBuilder(QueryOptions options, boolean isJson) throws InvalidRequestException
         {
             this.resultSet = new ResultSet(getResultMetadata(isJson).copy(), new ArrayList<List<ByteBuffer>>());
-            this.selectors = newSelectors();
+            this.protocolVersion = options.getProtocolVersion();
+            this.selectors = newSelectors(options);
             this.timestamps = collectTimestamps ? new long[columns.size()] : null;
             this.ttls = collectTTLs ? new int[columns.size()] : null;
             this.isJson = isJson;
@@ -361,36 +362,36 @@ public abstract class Selection
                  : c.value();
         }
 
-        public void newRow(int protocolVersion) throws InvalidRequestException
+        public void newRow() throws InvalidRequestException
         {
             if (current != null)
             {
                 selectors.addInputRow(protocolVersion, this);
                 if (!selectors.isAggregate())
                 {
-                    resultSet.addRow(getOutputRow(protocolVersion));
+                    resultSet.addRow(getOutputRow());
                     selectors.reset();
                 }
             }
             current = new ArrayList<>(columns.size());
         }
 
-        public ResultSet build(int protocolVersion) throws InvalidRequestException
+        public ResultSet build() throws InvalidRequestException
         {
             if (current != null)
             {
                 selectors.addInputRow(protocolVersion, this);
-                resultSet.addRow(getOutputRow(protocolVersion));
+                resultSet.addRow(getOutputRow());
                 selectors.reset();
                 current = null;
             }
 
             if (resultSet.isEmpty() && selectors.isAggregate())
-                resultSet.addRow(getOutputRow(protocolVersion));
+                resultSet.addRow(getOutputRow());
             return resultSet;
         }
 
-        private List<ByteBuffer> getOutputRow(int protocolVersion)
+        private List<ByteBuffer> getOutputRow()
         {
             List<ByteBuffer> outputRow = selectors.getOutputRow(protocolVersion);
             return isJson ? rowToJson(outputRow, protocolVersion, metadata)
@@ -415,7 +416,7 @@ public abstract class Selection
         public void reset();
     }
 
-    // Special cased selection for when no function is used (this save some allocations).
+    // Special cased selection for when only columns are selected.
     private static class SimpleSelection extends Selection
     {
         private final boolean isWildcard;
@@ -450,7 +451,7 @@ public abstract class Selection
             return false;
         }
 
-        protected Selectors newSelectors()
+        protected Selectors newSelectors(QueryOptions options)
         {
             return new Selectors()
             {
@@ -531,11 +532,11 @@ public abstract class Selection
             return factories.doesAggregation();
         }
 
-        protected Selectors newSelectors() throws InvalidRequestException
+        protected Selectors newSelectors(final QueryOptions options) throws InvalidRequestException
         {
             return new Selectors()
             {
-                private final List<Selector> selectors = factories.newInstances();
+                private final List<Selector> selectors = factories.newInstances(options);
 
                 public void reset()
                 {

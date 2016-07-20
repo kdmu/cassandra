@@ -17,10 +17,10 @@
  */
 package org.apache.cassandra.cql3;
 
-import java.util.Collections;
 import java.util.List;
 
 import org.apache.cassandra.cql3.functions.Function;
+import org.apache.cassandra.db.marshal.AbstractType;
 import org.apache.cassandra.db.marshal.CollectionType;
 import org.apache.cassandra.db.marshal.ListType;
 import org.apache.cassandra.exceptions.InvalidRequestException;
@@ -89,9 +89,15 @@ public abstract class AbstractMarker extends Term.NonTerminal
             return new Constants.Marker(bindIndex, receiver);
         }
 
+        @Override
         public AssignmentTestable.TestResult testAssignment(String keyspace, ColumnSpecification receiver)
         {
             return AssignmentTestable.TestResult.WEAKLY_ASSIGNABLE;
+        }
+
+        public AbstractType<?> getExactTypeIfKnown(String keyspace)
+        {
+            return null;
         }
 
         @Override

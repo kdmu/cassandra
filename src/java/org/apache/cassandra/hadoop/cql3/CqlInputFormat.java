@@ -213,7 +213,7 @@ public class CqlInputFormat extends org.apache.hadoop.mapreduce.InputFormat<Long
                 metadata.newToken(partitioner.getTokenFactory().toString(range.right)));
     }
 
-    private Map<TokenRange, Long> getSubSplits(String keyspace, String cfName, TokenRange range, Configuration conf, Session session) throws IOException
+    private Map<TokenRange, Long> getSubSplits(String keyspace, String cfName, TokenRange range, Configuration conf, Session session)
     {
         int splitSize = ConfigHelper.getInputSplitSize(conf);
         int splitSizeMb = ConfigHelper.getInputSplitSizeInMb(conf);
@@ -324,9 +324,9 @@ public class CqlInputFormat extends org.apache.hadoop.mapreduce.InputFormat<Long
 
             boolean partitionerIsOpp = partitioner instanceof OrderPreservingPartitioner || partitioner instanceof ByteOrderedPartitioner;
 
-            for (TokenRange subSplit : subSplits.keySet())
+            for (Map.Entry<TokenRange, Long> subSplitEntry : subSplits.entrySet())
             {
-                List<TokenRange> ranges = subSplit.unwrap();
+                List<TokenRange> ranges = subSplitEntry.getKey().unwrap();
                 for (TokenRange subrange : ranges)
                 {
                     ColumnFamilySplit split =
@@ -335,7 +335,7 @@ public class CqlInputFormat extends org.apache.hadoop.mapreduce.InputFormat<Long
                                             subrange.getStart().toString().substring(2) : subrange.getStart().toString(),
                                     partitionerIsOpp ?
                                             subrange.getEnd().toString().substring(2) : subrange.getEnd().toString(),
-                                    subSplits.get(subSplit),
+                                    subSplitEntry.getValue(),
                                     endpoints);
 
                     logger.trace("adding {}", split);

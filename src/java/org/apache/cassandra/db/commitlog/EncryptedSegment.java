@@ -25,12 +25,12 @@ import javax.crypto.Cipher;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.io.FSWriteError;
 import org.apache.cassandra.io.compress.BufferType;
 import org.apache.cassandra.io.compress.ICompressor;
 import org.apache.cassandra.security.EncryptionUtils;
 import org.apache.cassandra.security.EncryptionContext;
-import org.apache.cassandra.utils.ByteBufferUtil;
 import org.apache.cassandra.utils.Hex;
 import org.apache.cassandra.utils.SyncUtil;
 
@@ -65,9 +65,9 @@ public class EncryptedSegment extends FileDirectSegment
     private final EncryptionContext encryptionContext;
     private final Cipher cipher;
 
-    public EncryptedSegment(CommitLog commitLog, Runnable onClose)
+    public EncryptedSegment(CommitLog commitLog, AbstractCommitLogSegmentManager manager, Runnable onClose)
     {
-        super(commitLog, onClose);
+        super(commitLog, manager, onClose);
         this.encryptionContext = commitLog.configuration.getEncryptionContext();
 
         try
@@ -79,6 +79,8 @@ public class EncryptedSegment extends FileDirectSegment
             throw new FSWriteError(e, logFile);
         }
         logger.debug("created a new encrypted commit log segment: {}", logFile);
+        // Keep reusable buffers on-heap regardless of compression preference so we avoid copy off/on repeatedly during decryption
+        manager.getBufferPool().setPreferredReusableBufferType(BufferType.ON_HEAP);
     }
 
     protected Map<String, String> additionalHeaderParameters()
@@ -90,9 +92,9 @@ public class EncryptedSegment extends FileDirectSegment
 
     ByteBuffer createBuffer(CommitLog commitLog)
     {
-        //Note: we want to keep the compression buffers on-heap as we need those bytes for encryption,
+        // Note: we want to keep the compression buffers on-heap as we need those bytes for encryption,
         // and we want to avoid copying from off-heap (compression buffer) to on-heap encryption APIs
-        return createBuffer(BufferType.ON_HEAP);
+        return manager.getBufferPool().createBuffer(BufferType.ON_HEAP);
     }
 
     void write(int startMarker, int nextMarker)
@@ -108,7 +110,7 @@ public class EncryptedSegment extends FileDirectSegment
         {
             ByteBuffer inputBuffer = buffer.duplicate();
             inputBuffer.limit(contentStart + length).position(contentStart);
-            ByteBuffer buffer = reusableBufferHolder.get();
+            ByteBuffer buffer = manager.getBufferPool().getThreadLocalReusableBuffer(DatabaseDescriptor.getCommitLogSegmentSize());
 
             // save space for the sync marker at the beginning of this section
             final long syncMarkerPosition = lastWrittenPos;
@@ -127,26 +129,22 @@ public class EncryptedSegment extends FileDirectSegment
                 buffer = EncryptionUtils.encryptAndWrite(buffer, channel, true, cipher);
 
                 contentStart += nextBlockSize;
-                commitLog.allocator.addSize(buffer.limit() + ENCRYPTED_BLOCK_HEADER_SIZE);
+                manager.addSize(buffer.limit() + ENCRYPTED_BLOCK_HEADER_SIZE);
             }
 
             lastWrittenPos = channel.position();
 
-            // rewind to the beginning of the section and write out the sync marker,
-            // reusing the one of the existing buffers
-            buffer = ByteBufferUtil.ensureCapacity(buffer, ENCRYPTED_SECTION_HEADER_SIZE, true);
+            // rewind to the beginning of the section and write out the sync marker
+            buffer.position(0).limit(ENCRYPTED_SECTION_HEADER_SIZE);
             writeSyncMarker(buffer, 0, (int) syncMarkerPosition, (int) lastWrittenPos);
             buffer.putInt(SYNC_MARKER_SIZE, length);
-            buffer.position(0).limit(ENCRYPTED_SECTION_HEADER_SIZE);
-            commitLog.allocator.addSize(buffer.limit());
+            buffer.rewind();
+            manager.addSize(buffer.limit());
 
             channel.position(syncMarkerPosition);
             channel.write(buffer);
 
             SyncUtil.force(channel, true);
-
-            if (reusableBufferHolder.get().capacity() < buffer.capacity())
-                reusableBufferHolder.set(buffer);
         }
         catch (Exception e)
         {

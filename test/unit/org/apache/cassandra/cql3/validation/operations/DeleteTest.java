@@ -397,10 +397,10 @@ public class DeleteTest extends CQLTester
                                  "DELETE FROM %s WHERE partitionKey = ? AND partitionKey = ?", 0, 1);
 
             // unknown identifiers
-            assertInvalidMessage("Unknown identifier unknown",
+            assertInvalidMessage("Undefined column name unknown",
                                  "DELETE unknown FROM %s WHERE partitionKey = ?", 0);
 
-            assertInvalidMessage("Undefined name partitionkey1 in where clause ('partitionkey1 = ?')",
+            assertInvalidMessage("Undefined column name partitionkey1",
                                  "DELETE FROM %s WHERE partitionKey1 = ?", 0);
 
             // Invalid operator in the where clause
@@ -486,13 +486,13 @@ public class DeleteTest extends CQLTester
                                  "DELETE FROM %s WHERE partitionKey = ? AND clustering = ? AND clustering = ?", 0, 1, 1);
 
             // unknown identifiers
-            assertInvalidMessage("Unknown identifier value1",
+            assertInvalidMessage("Undefined column name value1",
                                  "DELETE value1 FROM %s WHERE partitionKey = ? AND clustering = ?", 0, 1);
 
-            assertInvalidMessage("Undefined name partitionkey1 in where clause ('partitionkey1 = ?')",
+            assertInvalidMessage("Undefined column name partitionkey1",
                                  "DELETE FROM %s WHERE partitionKey1 = ? AND clustering = ?", 0, 1);
 
-            assertInvalidMessage("Undefined name clustering_3 in where clause ('clustering_3 = ?')",
+            assertInvalidMessage("Undefined column name clustering_3",
                                  "DELETE FROM %s WHERE partitionKey = ? AND clustering_3 = ?", 0, 1);
 
             // Invalid operator in the where clause
@@ -616,13 +616,13 @@ public class DeleteTest extends CQLTester
                                  "DELETE FROM %s WHERE partitionKey = ? AND clustering_1 = ? AND clustering_2 = ? AND clustering_1 = ?", 0, 1, 1, 1);
 
             // unknown identifiers
-            assertInvalidMessage("Unknown identifier value1",
+            assertInvalidMessage("Undefined column name value1",
                                  "DELETE value1 FROM %s WHERE partitionKey = ? AND clustering_1 = ? AND clustering_2 = ?", 0, 1, 1);
 
-            assertInvalidMessage("Undefined name partitionkey1 in where clause ('partitionkey1 = ?')",
+            assertInvalidMessage("Undefined column name partitionkey1",
                                  "DELETE FROM %s WHERE partitionKey1 = ? AND clustering_1 = ? AND clustering_2 = ?", 0, 1, 1);
 
-            assertInvalidMessage("Undefined name clustering_3 in where clause ('clustering_3 = ?')",
+            assertInvalidMessage("Undefined column name clustering_3",
                                  "DELETE FROM %s WHERE partitionKey = ? AND clustering_1 = ? AND clustering_3 = ?", 0, 1, 1);
 
             // Invalid operator in the where clause
@@ -1104,5 +1104,31 @@ public class DeleteTest extends CQLTester
 
         compact();
         assertRows(execute("SELECT * FROM %s"), row(0, null));
+    }
+
+    @Test
+    public void testDeleteAndReverseQueries() throws Throwable
+    {
+        // This test insert rows in one sstable and a range tombstone covering some of those rows in another, and it
+        // validates we correctly get only the non-removed rows when doing reverse queries.
+
+        createTable("CREATE TABLE %s (k text, i int, PRIMARY KEY (k, i))");
+
+        for (int i = 0; i < 10; i++)
+            execute("INSERT INTO %s(k, i) values (?, ?)", "a", i);
+
+        flush();
+
+        execute("DELETE FROM %s WHERE k = ? AND i >= ? AND i <= ?", "a", 2, 7);
+
+        assertRows(execute("SELECT i FROM %s WHERE k = ? ORDER BY i DESC", "a"),
+            row(9), row(8), row(1), row(0)
+        );
+
+        flush();
+
+        assertRows(execute("SELECT i FROM %s WHERE k = ? ORDER BY i DESC", "a"),
+            row(9), row(8), row(1), row(0)
+        );
     }
 }

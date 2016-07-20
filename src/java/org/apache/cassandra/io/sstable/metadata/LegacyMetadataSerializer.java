@@ -21,10 +21,8 @@ import java.io.*;
 import java.nio.ByteBuffer;
 import java.util.*;
 
-import com.google.common.collect.Maps;
-
 import org.apache.cassandra.db.TypeSizes;
-import org.apache.cassandra.db.commitlog.ReplayPosition;
+import org.apache.cassandra.db.commitlog.CommitLogPosition;
 import org.apache.cassandra.io.sstable.Component;
 import org.apache.cassandra.io.sstable.Descriptor;
 import org.apache.cassandra.io.sstable.format.Version;
@@ -55,7 +53,7 @@ public class LegacyMetadataSerializer extends MetadataSerializer
 
         EstimatedHistogram.serializer.serialize(stats.estimatedPartitionSize, out);
         EstimatedHistogram.serializer.serialize(stats.estimatedColumnCount, out);
-        ReplayPosition.serializer.serialize(stats.commitLogUpperBound, out);
+        CommitLogPosition.serializer.serialize(stats.commitLogUpperBound, out);
         out.writeLong(stats.minTimestamp);
         out.writeLong(stats.maxTimestamp);
         out.writeInt(stats.maxLocalDeletionTime);
@@ -72,7 +70,7 @@ public class LegacyMetadataSerializer extends MetadataSerializer
         for (ByteBuffer value : stats.maxClusteringValues)
             ByteBufferUtil.writeWithShortLength(value, out);
         if (version.hasCommitLogLowerBound())
-            ReplayPosition.serializer.serialize(stats.commitLogLowerBound, out);
+            CommitLogPosition.serializer.serialize(stats.commitLogLowerBound, out);
     }
 
     /**
@@ -81,7 +79,7 @@ public class LegacyMetadataSerializer extends MetadataSerializer
     @Override
     public Map<MetadataType, MetadataComponent> deserialize(Descriptor descriptor, EnumSet<MetadataType> types) throws IOException
     {
-        Map<MetadataType, MetadataComponent> components = Maps.newHashMap();
+        Map<MetadataType, MetadataComponent> components = new EnumMap<>(MetadataType.class);
 
         File statsFile = new File(descriptor.filenameFor(Component.STATS));
         if (!statsFile.exists() && types.contains(MetadataType.STATS))
@@ -94,8 +92,8 @@ public class LegacyMetadataSerializer extends MetadataSerializer
             {
                 EstimatedHistogram partitionSizes = EstimatedHistogram.serializer.deserialize(in);
                 EstimatedHistogram columnCounts = EstimatedHistogram.serializer.deserialize(in);
-                ReplayPosition commitLogLowerBound = ReplayPosition.NONE;
-                ReplayPosition commitLogUpperBound = ReplayPosition.serializer.deserialize(in);
+                CommitLogPosition commitLogLowerBound = CommitLogPosition.NONE;
+                CommitLogPosition commitLogUpperBound = CommitLogPosition.serializer.deserialize(in);
                 long minTimestamp = in.readLong();
                 long maxTimestamp = in.readLong();
                 int maxLocalDeletionTime = in.readInt();
@@ -120,7 +118,7 @@ public class LegacyMetadataSerializer extends MetadataSerializer
                     maxColumnNames.add(ByteBufferUtil.readWithShortLength(in));
 
                 if (descriptor.version.hasCommitLogLowerBound())
-                    commitLogLowerBound = ReplayPosition.serializer.deserialize(in);
+                    commitLogLowerBound = CommitLogPosition.serializer.deserialize(in);
 
                 if (types.contains(MetadataType.VALIDATION))
                     components.put(MetadataType.VALIDATION,

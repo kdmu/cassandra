@@ -198,6 +198,12 @@ public class Config
 
     public Integer max_mutation_size_in_kb;
 
+    // Change-data-capture logs
+    public Boolean cdc_enabled = false;
+    public String cdc_raw_directory;
+    public Integer cdc_total_space_in_mb;
+    public Integer cdc_free_space_check_interval_ms = 250;
+
     @Deprecated
     public int commitlog_periodic_queue_size = -1;
 
@@ -270,6 +276,7 @@ public class Config
     public volatile Long index_summary_capacity_in_mb;
     public volatile int index_summary_resize_interval_in_minutes = 60;
 
+    public int gc_log_threshold_in_ms = 200;
     public int gc_warn_threshold_in_ms = 0;
 
     // TTL for different types of trace events.
@@ -453,6 +460,6 @@ public class Config
             configMap.put(name, value);
         }
 
-        logger.info("Node configuration:[" + Joiner.on("; ").join(configMap.entrySet()) + "]");
+        logger.info("Node configuration:[{}]", Joiner.on("; ").join(configMap.entrySet()));
     }
 }
