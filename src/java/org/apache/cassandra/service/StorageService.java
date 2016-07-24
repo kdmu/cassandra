@@ -166,12 +166,11 @@ public class StorageService extends NotificationBroadcasterSupport implements IE
     /* Are we starting this node in bootstrap mode? */
     private volatile boolean isBootstrapMode;
 
-    private final AtomicBoolean isDecommissioning = new AtomicBoolean(false);
-
     /* we bootstrap but do NOT join the ring unless told to do so */
     private boolean isSurveyMode = Boolean.parseBoolean(System.getProperty("cassandra.write_survey", "false"));
     /* true if node is rebuilding and receiving data */
     private final AtomicBoolean isRebuilding = new AtomicBoolean();
+    private final AtomicBoolean isDecommissioning = new AtomicBoolean();
 
     private volatile boolean initialized = false;
     private volatile boolean joined = false;
@@ -2516,8 +2515,15 @@ public class StorageService extends NotificationBroadcasterSupport implements IE
         // is gone. Whoever is present in newReplicaEndpoints list, but
         // not in the currentReplicaEndpoints list, will be needing the
         // range.
+        Set<Range<Token>> transferredRanges = streamStateStore.getAvailableRanges(keyspaceName, StorageService.instance.getTokenMetadata().partitioner);
         for (Range<Token> range : ranges)
         {
+            if (transferredRanges.contains(range))
+            {
+                logger.debug("Range {} are already transferred, skipping", range);
+                continue;
+            }
+
             Collection<InetAddress> newReplicaEndpoints = Keyspace.open(keyspaceName).getReplicationStrategy().calculateNaturalEndpoints(range.right, temp);
             newReplicaEndpoints.removeAll(currentReplicaEndpoints.get(range));
             if (logger.isDebugEnabled())
@@ -3662,45 +3668,75 @@ public class StorageService extends NotificationBroadcasterSupport implements IE
             throw new UnsupportedOperationException("local node is not a member of the token ring yet");
         if (tokenMetadata.cloneAfterAllLeft().sortedTokens().size() < 2)
             throw new UnsupportedOperationException("no other normal nodes in the ring; decommission would be pointless");
-        if (isDecommissioning.get() == false && operationMode != Mode.NORMAL)
+        if (operationMode != Mode.LEAVING && operationMode != Mode.NORMAL)
             throw new UnsupportedOperationException("Node in " + operationMode + " state; wait for status to become normal or restart");
+        if (isDecommissioning.get())
+            throw new IllegalStateException("Node is still decommissioning. Check nodetool netstats.");
 
         if (logger.isDebugEnabled())
-            if (isDecommissioning.compareAndSet(true, true))
-                logger.debug("RESUMING PREVIOUS DECOMMISSION");
-            else
                 logger.debug("DECOMMISSIONING");
 
-        PendingRangeCalculatorService.instance.blockUntilFinished();
-        for (String keyspaceName : Schema.instance.getNonLocalStrategyKeyspaces())
+
+        // if operationMode is different from LEAVING, clean-up AvailableRanges to ensure there's no residue of
+        // other stream operations like bootstrap
+        // if operationMode is set to LEAVING (only occurrs when we are resuming previous decommission),
+        // we leave AvailableRanges as it is since transferred ranges are stored inside
+        if (operationMode != Mode.LEAVING)
         {
-            if (tokenMetadata.getPendingRanges(keyspaceName, FBUtilities.getBroadcastAddress()).size() > 0)
-                throw new UnsupportedOperationException("data is currently moving to this node; unable to leave the ring");
+            logger.debug("Resetting AvailableRanges");
+            SystemKeyspace.resetAvailableRanges();
         }
 
-        startLeaving();
-        long timeout = Math.max(RING_DELAY, BatchlogManager.instance.getBatchlogTimeout());
-        setMode(Mode.LEAVING, "sleeping " + timeout + " ms for batch processing and pending range setup", true);
-        Thread.sleep(timeout);
-
-        Runnable finishLeaving = new Runnable()
+        try
         {
-            public void run()
+            PendingRangeCalculatorService.instance.blockUntilFinished();
+            for (String keyspaceName : Schema.instance.getNonLocalStrategyKeyspaces())
             {
-                shutdownClientServers();
-                Gossiper.instance.stop();
-                try {
-                    MessagingService.instance().shutdown();
-                } catch (IOError ioe) {
-                    logger.info("failed to shutdown message service: {}", ioe);
-                }
-                StageManager.shutdownNow();
-                SystemKeyspace.setBootstrapState(SystemKeyspace.BootstrapState.DECOMMISSIONED);
-                setMode(Mode.DECOMMISSIONED, true);
-                // let op be responsible for killing the process
+                if (tokenMetadata.getPendingRanges(keyspaceName, FBUtilities.getBroadcastAddress()).size() > 0)
+                    throw new UnsupportedOperationException("data is currently moving to this node; unable to leave the ring");
             }
-        };
-        unbootstrap(finishLeaving);
+
+            startLeaving();
+            long timeout = Math.max(RING_DELAY, BatchlogManager.instance.getBatchlogTimeout());
+            setMode(Mode.LEAVING, "sleeping " + timeout + " ms for batch processing and pending range setup", true);
+            isDecommissioning.set(true);
+            Thread.sleep(timeout);
+
+            Runnable finishLeaving = new Runnable()
+            {
+                public void run()
+                {
+                    shutdownClientServers();
+                    Gossiper.instance.stop();
+                    try
+                    {
+                        MessagingService.instance().shutdown();
+                    }
+                    catch (IOError ioe)
+                    {
+                        logger.info("failed to shutdown message service: {}", ioe);
+                    }
+                    StageManager.shutdownNow();
+                    SystemKeyspace.setBootstrapState(SystemKeyspace.BootstrapState.DECOMMISSIONED);
+                    setMode(Mode.DECOMMISSIONED, true);
+                    // let op be responsible for killing the process
+                }
+            };
+            unbootstrap(finishLeaving);
+        }
+        catch (InterruptedException e)
+        {
+            throw new RuntimeException("Node interrupted while decommissioning");
+        }
+        catch (ExecutionError e)
+        {
+            logger.error("Error while decommissioning node ", e.getCause());
+            throw new RuntimeException("Error while decommissioning node: " + e.getCause().getMessage());
+        }
+        finally
+        {
+            isDecommissioning.set(false);
+        }
     }
 
     private void leaveRing()
@@ -3764,7 +3800,6 @@ public class StorageService extends NotificationBroadcasterSupport implements IE
         logger.debug("stream acks all received.");
         leaveRing();
         onFinish.run();
-        isDecommissioning.set(false);
     }
 
     private Future streamHints()
@@ -4519,6 +4554,10 @@ public class StorageService extends NotificationBroadcasterSupport implements IE
         }
 
         StreamPlan streamPlan = new StreamPlan("Unbootstrap");
+
+        // Vinculate StreamStateStore to current StreamPlan to update transferred ranges per StreamSession
+        streamPlan.listeners(streamStateStore);
+
         for (Map.Entry<String, Map<InetAddress, List<Range<Token>>>> entry : sessionsToStreamByKeyspace.entrySet())
         {
             String keyspaceName = entry.getKey();
