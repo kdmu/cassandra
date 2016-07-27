@@ -135,6 +135,7 @@ public class StreamSession implements IEndpointStateChangeSubscriber
 
     // stream requests to send to the peer
     protected final Set<StreamRequest> requests = Sets.newConcurrentHashSet();
+    protected final Set<StreamTransferTask> transferTasks = Sets.newConcurrentHashSet();
     // streaming tasks are created and managed per ColumnFamily ID
     private final ConcurrentHashMap<UUID, StreamTransferTask> transfers = new ConcurrentHashMap<>();
     // data receivers, filled after receiving prepare message
@@ -291,7 +292,7 @@ public class StreamSession implements IEndpointStateChangeSubscriber
         List<SSTableStreamingSections> sections = getSSTableSectionsForRanges(normalizedRanges, stores, repairedAt, isIncremental);
         try
         {
-            addTransferFiles(sections);
+            addTransferFilesAndRecord(sections, description(), keyspace, ranges);
         }
         finally
         {
@@ -374,6 +375,42 @@ public class StreamSession implements IEndpointStateChangeSubscriber
         {
             refs.release();
             throw t;
+        }
+    }
+
+    // addTransferFiles which keepse a record of transfered keyspace and ranges in StreamTransferTask
+    public synchronized void addTransferFilesAndRecord(Collection<SSTableStreamingSections> sstableDetails,
+                                                       String operation,
+                                                       String keyspace,
+                                                       Collection<Range<Token>> ranges)
+    {
+        failIfFinished();
+        Iterator<SSTableStreamingSections> iter = sstableDetails.iterator();
+        while (iter.hasNext())
+        {
+            SSTableStreamingSections details = iter.next();
+            if (details.sections.isEmpty())
+            {
+                // A reference was acquired on the sstable and we won't stream it
+                details.ref.release();
+                iter.remove();
+                continue;
+            }
+
+            UUID cfId = details.ref.get().metadata.cfId;
+            StreamTransferTask task = transfers.get(cfId);
+            if (task == null)
+            {
+                //guarantee atomicity
+                StreamTransferTask newTask = new StreamTransferTask(this, cfId);
+                task = transfers.putIfAbsent(cfId, newTask);
+                if (task == null)
+                    task = newTask;
+            }
+            task.addTransferFile(details.ref, details.estimatedKeys, details.sections, details.repairedAt);
+            task.recordTransferInformation(operation, keyspace, ranges);
+            transferTasks.add(task);
+            iter.remove();
         }
     }
 

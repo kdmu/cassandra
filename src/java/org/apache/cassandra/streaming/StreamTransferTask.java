@@ -25,6 +25,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 import com.google.common.base.Throwables;
 
 import org.apache.cassandra.concurrent.NamedThreadFactory;
+import org.apache.cassandra.dht.Range;
+import org.apache.cassandra.dht.Token;
 import org.apache.cassandra.io.sstable.format.SSTableReader;
 import org.apache.cassandra.streaming.messages.OutgoingFileMessage;
 import org.apache.cassandra.utils.Pair;
@@ -45,6 +47,10 @@ public class StreamTransferTask extends StreamTask
 
     private long totalSize;
 
+    private String operation;
+    private String keyspace;
+    private Collection<Range<Token>> ranges;
+
     public StreamTransferTask(StreamSession session, UUID cfId)
     {
         super(session, cfId);
@@ -57,6 +63,29 @@ public class StreamTransferTask extends StreamTask
         message = StreamHook.instance.reportOutgoingFile(session, ref.get(), message);
         files.put(message.header.sequenceNumber, message);
         totalSize += message.header.size();
+    }
+
+    public void recordTransferInformation(String operation, String keyspace, Collection<Range<Token>> ranges)
+    {
+
+        this.operation = operation;
+        this.keyspace = keyspace;
+        this.ranges = ranges;
+    }
+
+    public String getOperation()
+    {
+        return operation;
+    }
+
+    public String getKeyspace()
+    {
+        return keyspace;
+    }
+
+    public Collection<Range<Token>> getRanges()
+    {
+        return ranges;
     }
 
     /**

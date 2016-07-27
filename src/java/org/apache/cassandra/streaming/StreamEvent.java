@@ -47,6 +47,7 @@ public abstract class StreamEvent
         public final boolean success;
         public final int sessionIndex;
         public final Set<StreamRequest> requests;
+        public final Set<StreamTransferTask> transferTasks;
 
         public SessionCompleteEvent(StreamSession session)
         {
@@ -55,6 +56,7 @@ public abstract class StreamEvent
             this.success = session.isSuccess();
             this.sessionIndex = session.sessionIndex();
             this.requests = ImmutableSet.copyOf(session.requests);
+            this.transferTasks = ImmutableSet.copyOf(session.transferTasks);
         }
     }
 

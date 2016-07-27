@@ -24,6 +24,7 @@ import org.apache.cassandra.streaming.StreamEvent;
 import org.apache.cassandra.streaming.StreamEventHandler;
 import org.apache.cassandra.streaming.StreamRequest;
 import org.apache.cassandra.streaming.StreamState;
+import org.apache.cassandra.streaming.StreamTransferTask;
 
 /**
  * Store and update available ranges (data already received) to system keyspace.
@@ -69,6 +70,10 @@ public class StreamStateStore implements StreamEventHandler
                 for (StreamRequest request : se.requests)
                 {
                     SystemKeyspace.updateAvailableRanges(request.keyspace, request.ranges);
+                }
+                for (StreamTransferTask task : se.transferTasks)
+                {
+                    SystemKeyspace.updateStreamedRanges(task.getOperation(), se.peer, task.getKeyspace(), task.getRanges());
                 }
             }
         }
