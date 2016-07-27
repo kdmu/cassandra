@@ -95,6 +95,7 @@ public final class SystemKeyspace
     public static final String SSTABLE_ACTIVITY = "sstable_activity";
     public static final String SIZE_ESTIMATES = "size_estimates";
     public static final String AVAILABLE_RANGES = "available_ranges";
+    public static final String STREAMED_RANGES = "streamed_ranges";
     public static final String VIEWS_BUILDS_IN_PROGRESS = "views_builds_in_progress";
     public static final String BUILT_VIEWS = "built_views";
     public static final String PREPARED_STATEMENTS = "prepared_statements";
@@ -246,6 +247,16 @@ public final class SystemKeyspace
                 + "keyspace_name text,"
                 + "ranges set<blob>,"
                 + "PRIMARY KEY ((keyspace_name)))");
+
+    private static final CFMetaData StreamedRanges =
+        compile(STREAMED_RANGES,
+                "record of streamed ranges for streaming operation",
+                "CREATE TABLE %s ("
+                + "operation text"
+                + "peer inet"
+                + "keyspace_name text"
+                + "ranges set<blob>"
+                + "PRIMARY KEY ((operation, keyspace_name), peer))");
 
     private static final CFMetaData ViewsBuildsInProgress =
         compile(VIEWS_BUILDS_IN_PROGRESS,
@@ -1294,6 +1305,43 @@ public final class SystemKeyspace
     {
         ColumnFamilyStore availableRanges = Keyspace.open(NAME).getColumnFamilyStore(AVAILABLE_RANGES);
         availableRanges.truncateBlocking();
+    }
+
+    public static synchronized void updateStreamedRanges(String description,
+                                                         InetAddress peer,
+                                                         String keyspace,
+                                                         Collection<Range<Token>> streamedRanges
+                                                         )
+    {
+        String cql = "UPDATE system.%s SET operation = ?, peer = ?, ranges = ranges + ? WHERE keyspace_name = ?";
+        Set<ByteBuffer> rangesToUpdate = new HashSet<>(streamedRanges.size());
+        for (Range<Token> range : streamedRanges)
+        {
+            rangesToUpdate.add(rangeToBytes(range));
+        }
+        executeInternal(String.format(cql, STREAMED_RANGES), description, peer, rangesToUpdate, keyspace);
+    }
+
+    public static synchronized Set<Range<Token>> getStreamedRanges(String keyspace, InetAddress peer, IPartitioner partitioner)
+    {
+        Set<Range<Token>> result = new HashSet<>();
+        String query = "SELECT * FROM system.%s WHERE keyspace_name = ? AND peer = ?";
+        UntypedResultSet rs = executeInternal(String.format(query, AVAILABLE_RANGES), keyspace, peer);
+        for (UntypedResultSet.Row row : rs)
+        {
+            Set<ByteBuffer> rawRanges = rawRanges = row.getSet("ranges", BytesType.instance);
+            for (ByteBuffer rawRange : rawRanges)
+            {
+                result.add(byteBufferToRange(rawRange, partitioner));
+            }
+        }
+        return ImmutableSet.copyOf(result);
+    }
+
+    public static void resetStreamedRanges()
+    {
+        ColumnFamilyStore streamedRanges = Keyspace.open(NAME).getColumnFamilyStore(STREAMED_RANGES);
+        streamedRanges.truncateBlocking();
     }
 
     /**

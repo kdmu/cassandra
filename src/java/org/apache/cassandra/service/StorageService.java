@@ -2515,17 +2515,18 @@ public class StorageService extends NotificationBroadcasterSupport implements IE
         // is gone. Whoever is present in newReplicaEndpoints list, but
         // not in the currentReplicaEndpoints list, will be needing the
         // range.
-        Set<Range<Token>> transferredRanges = streamStateStore.getAvailableRanges(keyspaceName, StorageService.instance.getTokenMetadata().partitioner);
         for (Range<Token> range : ranges)
         {
-            if (transferredRanges.contains(range))
-            {
-                logger.debug("Range {} are already transferred, skipping", range);
-                continue;
-            }
-
             Collection<InetAddress> newReplicaEndpoints = Keyspace.open(keyspaceName).getReplicationStrategy().calculateNaturalEndpoints(range.right, temp);
             newReplicaEndpoints.removeAll(currentReplicaEndpoints.get(range));
+            for (InetAddress newReplica : newReplicaEndpoints)
+            {
+                Set<Range<Token>> streamedRanges = SystemKeyspace.getStreamedRanges(keyspaceName, newReplica, StorageService.instance.getTokenMetadata().partitioner);
+                if (streamedRanges.contains(range))
+                {
+                    newReplicaEndpoints.remove(newReplica);
+                }
+            }
             if (logger.isDebugEnabled())
                 if (newReplicaEndpoints.isEmpty())
                     logger.debug("Range {} already in all replicas", range);
@@ -3683,8 +3684,8 @@ public class StorageService extends NotificationBroadcasterSupport implements IE
         // we leave AvailableRanges as it is since transferred ranges are stored inside
         if (operationMode != Mode.LEAVING)
         {
-            logger.debug("Resetting AvailableRanges");
-            SystemKeyspace.resetAvailableRanges();
+            logger.debug("Resetting STREAMED_RANGES");
+            SystemKeyspace.resetStreamedRanges();
         }
 
         try
