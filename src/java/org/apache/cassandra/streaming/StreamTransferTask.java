@@ -47,35 +47,34 @@ public class StreamTransferTask extends StreamTask
 
     private long totalSize;
 
-    private String operation;
+    private String description;
     private String keyspace;
-    private Collection<Range<Token>> ranges;
+    private Set<Range<Token>> ranges;
 
-    public StreamTransferTask(StreamSession session, UUID cfId)
+    public StreamTransferTask(StreamSession session, UUID cfId, String keyspace)
     {
         super(session, cfId);
+        this.description = session.description();
+        this.keyspace = keyspace;
     }
 
-    public synchronized void addTransferFile(Ref<SSTableReader> ref, long estimatedKeys, List<Pair<Long, Long>> sections, long repairedAt)
+    public synchronized void addTransferFile(Ref<SSTableReader> ref,
+                                             long estimatedKeys,
+                                             List<Pair<Long, Long>> sections,
+                                             long repairedAt,
+                                             Collection<Range<Token>> ranges)
     {
         assert ref.get() != null && cfId.equals(ref.get().metadata.cfId);
         OutgoingFileMessage message = new OutgoingFileMessage(ref, sequenceNumber.getAndIncrement(), estimatedKeys, sections, repairedAt, session.keepSSTableLevel());
         message = StreamHook.instance.reportOutgoingFile(session, ref.get(), message);
         files.put(message.header.sequenceNumber, message);
         totalSize += message.header.size();
+        ranges.addAll(ranges);
     }
 
-    public void recordTransferInformation(String operation, String keyspace, Collection<Range<Token>> ranges)
+    public String getDescription()
     {
-
-        this.operation = operation;
-        this.keyspace = keyspace;
-        this.ranges = ranges;
-    }
-
-    public String getOperation()
-    {
-        return operation;
+        return description;
     }
 
     public String getKeyspace()
@@ -83,7 +82,7 @@ public class StreamTransferTask extends StreamTask
         return keyspace;
     }
 
-    public Collection<Range<Token>> getRanges()
+    public Set<Range<Token>> getRanges()
     {
         return ranges;
     }

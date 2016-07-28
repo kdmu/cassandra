@@ -2519,14 +2519,6 @@ public class StorageService extends NotificationBroadcasterSupport implements IE
         {
             Collection<InetAddress> newReplicaEndpoints = Keyspace.open(keyspaceName).getReplicationStrategy().calculateNaturalEndpoints(range.right, temp);
             newReplicaEndpoints.removeAll(currentReplicaEndpoints.get(range));
-            for (InetAddress newReplica : newReplicaEndpoints)
-            {
-                Set<Range<Token>> streamedRanges = SystemKeyspace.getStreamedRanges(keyspaceName, newReplica, StorageService.instance.getTokenMetadata().partitioner);
-                if (streamedRanges.contains(range))
-                {
-                    newReplicaEndpoints.remove(newReplica);
-                }
-            }
             if (logger.isDebugEnabled())
                 if (newReplicaEndpoints.isEmpty())
                     logger.debug("Range {} already in all replicas", range);
@@ -3677,17 +3669,6 @@ public class StorageService extends NotificationBroadcasterSupport implements IE
         if (logger.isDebugEnabled())
                 logger.debug("DECOMMISSIONING");
 
-
-        // if operationMode is different from LEAVING, clean-up AvailableRanges to ensure there's no residue of
-        // other stream operations like bootstrap
-        // if operationMode is set to LEAVING (only occurrs when we are resuming previous decommission),
-        // we leave AvailableRanges as it is since transferred ranges are stored inside
-        if (operationMode != Mode.LEAVING)
-        {
-            logger.debug("Resetting STREAMED_RANGES");
-            SystemKeyspace.resetStreamedRanges();
-        }
-
         try
         {
             PendingRangeCalculatorService.instance.blockUntilFinished();
@@ -4541,6 +4522,13 @@ public class StorageService extends NotificationBroadcasterSupport implements IE
             {
                 Range<Token> range = endPointEntry.getKey();
                 InetAddress endpoint = endPointEntry.getValue();
+
+                Set<Range<Token>> streamedRanges = SystemKeyspace.getStreamedRanges("Unbootstrap", keyspace, endpoint, StorageService.instance.getTokenMetadata().partitioner);
+                if (streamedRanges.contains(range))
+                {
+                    logger.debug("Range {} already in {}, skipping", range, endpoint);
+                    continue;
+                }
 
                 List<Range<Token>> curRanges = rangesPerEndpoint.get(endpoint);
                 if (curRanges == null)

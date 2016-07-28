@@ -73,7 +73,7 @@ public class StreamStateStore implements StreamEventHandler
                 }
                 for (StreamTransferTask task : se.transferTasks)
                 {
-                    SystemKeyspace.updateStreamedRanges(task.getOperation(), se.peer, task.getKeyspace(), task.getRanges());
+                    SystemKeyspace.updateStreamedRanges(task.getDescription(), se.peer, task.getKeyspace(), task.getRanges());
                 }
             }
         }

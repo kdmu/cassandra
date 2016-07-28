@@ -452,6 +452,7 @@ public final class SystemKeyspace
                          SSTableActivity,
                          SizeEstimates,
                          AvailableRanges,
+                         StreamedRanges,
                          ViewsBuildsInProgress,
                          BuiltViews,
                          LegacyHints,
@@ -1310,8 +1311,7 @@ public final class SystemKeyspace
     public static synchronized void updateStreamedRanges(String description,
                                                          InetAddress peer,
                                                          String keyspace,
-                                                         Collection<Range<Token>> streamedRanges
-                                                         )
+                                                         Collection<Range<Token>> streamedRanges)
     {
         String cql = "UPDATE system.%s SET operation = ?, peer = ?, ranges = ranges + ? WHERE keyspace_name = ?";
         Set<ByteBuffer> rangesToUpdate = new HashSet<>(streamedRanges.size());
@@ -1322,11 +1322,11 @@ public final class SystemKeyspace
         executeInternal(String.format(cql, STREAMED_RANGES), description, peer, rangesToUpdate, keyspace);
     }
 
-    public static synchronized Set<Range<Token>> getStreamedRanges(String keyspace, InetAddress peer, IPartitioner partitioner)
+    public static synchronized Set<Range<Token>> getStreamedRanges(String description, String keyspace, InetAddress peer, IPartitioner partitioner)
     {
         Set<Range<Token>> result = new HashSet<>();
-        String query = "SELECT * FROM system.%s WHERE keyspace_name = ? AND peer = ?";
-        UntypedResultSet rs = executeInternal(String.format(query, AVAILABLE_RANGES), keyspace, peer);
+        String query = "SELECT * FROM system.%s WHERE operation = ? AND keyspace_name = ? AND peer = ?";
+        UntypedResultSet rs = executeInternal(String.format(query, AVAILABLE_RANGES), description, keyspace, peer);
         for (UntypedResultSet.Row row : rs)
         {
             Set<ByteBuffer> rawRanges = rawRanges = row.getSet("ranges", BytesType.instance);
