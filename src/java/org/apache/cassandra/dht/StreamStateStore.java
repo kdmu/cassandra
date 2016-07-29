@@ -23,6 +23,7 @@ import org.apache.cassandra.db.SystemKeyspace;
 import org.apache.cassandra.streaming.StreamEvent;
 import org.apache.cassandra.streaming.StreamEventHandler;
 import org.apache.cassandra.streaming.StreamRequest;
+import org.apache.cassandra.streaming.StreamSession;
 import org.apache.cassandra.streaming.StreamState;
 import org.apache.cassandra.streaming.StreamTransferTask;
 
@@ -73,7 +74,12 @@ public class StreamStateStore implements StreamEventHandler
                 }
                 for (StreamTransferTask task : se.transferTasks)
                 {
-                    SystemKeyspace.updateStreamedRanges(task.getDescription(), se.peer, task.getKeyspace(), task.getRanges());
+                    StreamSession session = task.getSession();
+                    String keyspace = task.getKeyspace();
+                    SystemKeyspace.updateStreamedRanges(task.getSession().description(),
+                                                        se.peer,
+                                                        keyspace,
+                                                        session.transferredRangesPerKeyspace.get(keyspace));
                 }
             }
         }

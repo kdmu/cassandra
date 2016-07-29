@@ -144,6 +144,8 @@ public class StreamSession implements IEndpointStateChangeSubscriber
     /* can be null when session is created in remote */
     private final StreamConnectionFactory factory;
 
+    public final Map<String, Set<Range<Token>>> transferredRangesPerKeyspace = new HashMap<>();
+
     public final ConnectionHandler handler;
 
     private int retries;
@@ -293,6 +295,9 @@ public class StreamSession implements IEndpointStateChangeSubscriber
         try
         {
             addTransferFiles(sections);
+            Set<Range<Token>> transferredRanges = new HashSet<>();
+            transferredRanges.addAll(ranges);
+            transferredRangesPerKeyspace.put(keyspace,transferredRanges);
         }
         finally
         {
@@ -367,8 +372,7 @@ public class StreamSession implements IEndpointStateChangeSubscriber
                 sections.add(new SSTableStreamingSections(refs.get(sstable),
                                                           sstable.getPositionsForRanges(ranges),
                                                           sstable.estimatedKeysForRanges(ranges),
-                                                          repairedAt,
-                                                          ranges));
+                                                          repairedAt));
             }
             return sections;
         }
@@ -404,7 +408,8 @@ public class StreamSession implements IEndpointStateChangeSubscriber
                 if (task == null)
                     task = newTask;
             }
-            task.addTransferFile(details.ref, details.estimatedKeys, details.sections, details.repairedAt, details.ranges);
+            task.addTransferFile(details.ref, details.estimatedKeys, details.sections, details.repairedAt);
+            transferTasks.add(task);
             iter.remove();
         }
     }
@@ -415,19 +420,13 @@ public class StreamSession implements IEndpointStateChangeSubscriber
         public final List<Pair<Long, Long>> sections;
         public final long estimatedKeys;
         public final long repairedAt;
-        public Collection<Range<Token>> ranges;
 
-        public SSTableStreamingSections(Ref<SSTableReader> ref,
-                                        List<Pair<Long, Long>> sections,
-                                        long estimatedKeys,
-                                        long repairedAt,
-                                        Collection<Range<Token>> ranges)
+        public SSTableStreamingSections(Ref<SSTableReader> ref, List<Pair<Long, Long>> sections, long estimatedKeys, long repairedAt)
         {
             this.ref = ref;
             this.sections = sections;
             this.estimatedKeys = estimatedKeys;
             this.repairedAt = repairedAt;
-            this.ranges = ranges;
         }
     }
 

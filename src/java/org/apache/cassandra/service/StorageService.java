@@ -4509,6 +4509,33 @@ public class StorageService extends NotificationBroadcasterSupport implements IE
     {
         // First, we build a list of ranges to stream to each host, per table
         Map<String, Map<InetAddress, List<Range<Token>>>> sessionsToStreamByKeyspace = new HashMap<>();
+
+        // Build a map of streamed ranges per endpoint
+        Map<InetAddress, Set<Range<Token>>> streamedRangesPerEndpoints = new HashMap<>();
+        Set<String> keyspaces = rangesToStreamByKeyspace.keySet();
+        for (String keyspace : keyspaces)
+        {
+            Collection<InetAddress> tmp = rangesToStreamByKeyspace.get(keyspace).values();
+            Set<InetAddress> inetAddresses = new HashSet<>();
+            inetAddresses.addAll(tmp);
+            for (InetAddress peer : inetAddresses)
+            {
+                Set<Range<Token>> streamedRanges = SystemKeyspace.getStreamedRanges("Unbootstrap", keyspace, peer, StorageService.instance.getTokenMetadata().partitioner);
+                if (!streamedRangesPerEndpoints.containsKey(peer))
+                {
+                    streamedRangesPerEndpoints.put(peer, streamedRanges);
+                }
+                else
+                {
+                    if (streamedRanges.isEmpty())
+                        continue;
+                    Set<Range<Token>> toBeUpdated = streamedRangesPerEndpoints.get(peer);
+                    toBeUpdated.addAll(streamedRanges);
+                    streamedRangesPerEndpoints.replace(peer, toBeUpdated);
+                }
+            }
+        }
+
         for (Map.Entry<String, Multimap<Range<Token>, InetAddress>> entry : rangesToStreamByKeyspace.entrySet())
         {
             String keyspace = entry.getKey();
@@ -4523,7 +4550,7 @@ public class StorageService extends NotificationBroadcasterSupport implements IE
                 Range<Token> range = endPointEntry.getKey();
                 InetAddress endpoint = endPointEntry.getValue();
 
-                Set<Range<Token>> streamedRanges = SystemKeyspace.getStreamedRanges("Unbootstrap", keyspace, endpoint, StorageService.instance.getTokenMetadata().partitioner);
+                Set<Range<Token>> streamedRanges = streamedRangesPerEndpoints.get(endpoint);
                 if (streamedRanges.contains(range))
                 {
                     logger.debug("Range {} already in {}, skipping", range, endpoint);

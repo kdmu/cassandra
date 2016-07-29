@@ -47,44 +47,34 @@ public class StreamTransferTask extends StreamTask
 
     private long totalSize;
 
-    private String description;
     private String keyspace;
-    private Set<Range<Token>> ranges;
 
     public StreamTransferTask(StreamSession session, UUID cfId, String keyspace)
     {
         super(session, cfId);
-        this.description = session.description();
         this.keyspace = keyspace;
     }
 
     public synchronized void addTransferFile(Ref<SSTableReader> ref,
                                              long estimatedKeys,
                                              List<Pair<Long, Long>> sections,
-                                             long repairedAt,
-                                             Collection<Range<Token>> ranges)
+                                             long repairedAt)
     {
         assert ref.get() != null && cfId.equals(ref.get().metadata.cfId);
         OutgoingFileMessage message = new OutgoingFileMessage(ref, sequenceNumber.getAndIncrement(), estimatedKeys, sections, repairedAt, session.keepSSTableLevel());
         message = StreamHook.instance.reportOutgoingFile(session, ref.get(), message);
         files.put(message.header.sequenceNumber, message);
         totalSize += message.header.size();
-        ranges.addAll(ranges);
     }
 
-    public String getDescription()
+    public StreamSession getSession()
     {
-        return description;
+        return super.session;
     }
 
     public String getKeyspace()
     {
         return keyspace;
-    }
-
-    public Set<Range<Token>> getRanges()
-    {
-        return ranges;
     }
 
     /**
