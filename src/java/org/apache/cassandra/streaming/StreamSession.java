@@ -135,7 +135,6 @@ public class StreamSession implements IEndpointStateChangeSubscriber
 
     // stream requests to send to the peer
     protected final Set<StreamRequest> requests = Sets.newConcurrentHashSet();
-    protected final Set<StreamTransferTask> transferTasks = Sets.newConcurrentHashSet();
     // streaming tasks are created and managed per ColumnFamily ID
     private final ConcurrentHashMap<UUID, StreamTransferTask> transfers = new ConcurrentHashMap<>();
     // data receivers, filled after receiving prepare message
@@ -408,13 +407,12 @@ public class StreamSession implements IEndpointStateChangeSubscriber
             if (task == null)
             {
                 //guarantee atomicity
-                StreamTransferTask newTask = new StreamTransferTask(this, cfId, details.ref.get().metadata.ksName);
+                StreamTransferTask newTask = new StreamTransferTask(this, cfId);
                 task = transfers.putIfAbsent(cfId, newTask);
                 if (task == null)
                     task = newTask;
             }
             task.addTransferFile(details.ref, details.estimatedKeys, details.sections, details.repairedAt);
-            transferTasks.add(task);
             iter.remove();
         }
     }

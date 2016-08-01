@@ -45,12 +45,9 @@ public class StreamTransferTask extends StreamTask
 
     private long totalSize;
 
-    private String keyspace;
-
-    public StreamTransferTask(StreamSession session, UUID cfId, String keyspace)
+    public StreamTransferTask(StreamSession session, UUID cfId)
     {
         super(session, cfId);
-        this.keyspace = keyspace;
     }
 
     public synchronized void addTransferFile(Ref<SSTableReader> ref,
@@ -63,16 +60,6 @@ public class StreamTransferTask extends StreamTask
         message = StreamHook.instance.reportOutgoingFile(session, ref.get(), message);
         files.put(message.header.sequenceNumber, message);
         totalSize += message.header.size();
-    }
-
-    public StreamSession getSession()
-    {
-        return super.session;
-    }
-
-    public String getKeyspace()
-    {
-        return keyspace;
     }
 
     /**
