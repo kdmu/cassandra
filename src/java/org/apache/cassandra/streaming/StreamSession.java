@@ -295,9 +295,14 @@ public class StreamSession implements IEndpointStateChangeSubscriber
         try
         {
             addTransferFiles(sections);
-            Set<Range<Token>> transferredRanges = new HashSet<>();
-            transferredRanges.addAll(ranges);
-            transferredRangesPerKeyspace.put(keyspace,transferredRanges);
+            Set<Range<Token>> toBeUpdated = new HashSet<>();
+            if (transferredRangesPerKeyspace.containsKey(keyspace))
+            {
+                toBeUpdated = transferredRangesPerKeyspace.get(keyspace);
+            }
+            toBeUpdated.addAll(ranges);
+            transferredRangesPerKeyspace.put(keyspace, toBeUpdated);
+
         }
         finally
         {

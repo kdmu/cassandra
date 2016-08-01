@@ -25,8 +25,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 import com.google.common.base.Throwables;
 
 import org.apache.cassandra.concurrent.NamedThreadFactory;
-import org.apache.cassandra.dht.Range;
-import org.apache.cassandra.dht.Token;
 import org.apache.cassandra.io.sstable.format.SSTableReader;
 import org.apache.cassandra.streaming.messages.OutgoingFileMessage;
 import org.apache.cassandra.utils.Pair;

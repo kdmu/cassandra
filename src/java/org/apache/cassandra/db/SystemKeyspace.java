@@ -30,6 +30,7 @@ import javax.management.openmbean.OpenDataException;
 import javax.management.openmbean.TabularData;
 
 import com.google.common.collect.HashMultimap;
+import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.SetMultimap;
 import com.google.common.io.ByteStreams;
@@ -1322,20 +1323,23 @@ public final class SystemKeyspace
         executeInternal(String.format(cql, STREAMED_RANGES), rangesToUpdate, description, peer, keyspace);
     }
 
-    public static synchronized Set<Range<Token>> getStreamedRanges(String description, String keyspace, InetAddress peer, IPartitioner partitioner)
+    public static synchronized Map<InetAddress, Set<Range<Token>>> getStreamedRanges(String description, String keyspace, IPartitioner partitioner)
     {
-        Set<Range<Token>> result = new HashSet<>();
-        String query = "SELECT * FROM system.%s WHERE operation = ? AND keyspace_name = ? AND peer = ?";
-        UntypedResultSet rs = executeInternal(String.format(query, STREAMED_RANGES), description, keyspace, peer);
+        Map<InetAddress, Set<Range<Token>>> result = new HashMap<>();
+        String query = "SELECT * FROM system.%s WHERE operation = ? AND keyspace_name = ?";
+        UntypedResultSet rs = executeInternal(String.format(query, STREAMED_RANGES), description, keyspace);
         for (UntypedResultSet.Row row : rs)
         {
+            InetAddress peer = row.getInetAddress("peer");
             Set<ByteBuffer> rawRanges = rawRanges = row.getSet("ranges", BytesType.instance);
+            Set<Range<Token>> ranges = new HashSet<>();
             for (ByteBuffer rawRange : rawRanges)
             {
-                result.add(byteBufferToRange(rawRange, partitioner));
+                ranges.add(byteBufferToRange(rawRange, partitioner));
             }
+            result.put(peer, ranges);
         }
-        return ImmutableSet.copyOf(result);
+        return ImmutableMap.copyOf(result);
     }
 
     /**
