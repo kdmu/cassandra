@@ -301,7 +301,6 @@ public class StreamSession implements IEndpointStateChangeSubscriber
             }
             toBeUpdated.addAll(ranges);
             transferredRangesPerKeyspace.put(keyspace, toBeUpdated);
-
         }
         finally
         {
