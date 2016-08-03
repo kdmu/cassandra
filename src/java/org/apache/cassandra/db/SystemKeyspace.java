@@ -96,7 +96,7 @@ public final class SystemKeyspace
     public static final String SSTABLE_ACTIVITY = "sstable_activity";
     public static final String SIZE_ESTIMATES = "size_estimates";
     public static final String AVAILABLE_RANGES = "available_ranges";
-    public static final String STREAMED_RANGES = "streamed_ranges";
+    public static final String TRANSFERRED_RANGES = "transferred_ranges";
     public static final String VIEWS_BUILDS_IN_PROGRESS = "views_builds_in_progress";
     public static final String BUILT_VIEWS = "built_views";
     public static final String PREPARED_STATEMENTS = "prepared_statements";
@@ -249,8 +249,8 @@ public final class SystemKeyspace
                 + "ranges set<blob>,"
                 + "PRIMARY KEY ((keyspace_name)))");
 
-    private static final CFMetaData StreamedRanges =
-        compile(STREAMED_RANGES,
+    private static final CFMetaData TransferredRanges =
+        compile(TRANSFERRED_RANGES,
                 "record of streamed ranges for streaming operation",
                 "CREATE TABLE %s ("
                 + "operation text,"
@@ -453,7 +453,7 @@ public final class SystemKeyspace
                          SSTableActivity,
                          SizeEstimates,
                          AvailableRanges,
-                         StreamedRanges,
+                         TransferredRanges,
                          ViewsBuildsInProgress,
                          BuiltViews,
                          LegacyHints,
@@ -1309,7 +1309,7 @@ public final class SystemKeyspace
         availableRanges.truncateBlocking();
     }
 
-    public static synchronized void updateStreamedRanges(String description,
+    public static synchronized void updateTransferredRanges(String description,
                                                          InetAddress peer,
                                                          String keyspace,
                                                          Collection<Range<Token>> streamedRanges)
@@ -1320,14 +1320,14 @@ public final class SystemKeyspace
         {
             rangesToUpdate.add(rangeToBytes(range));
         }
-        executeInternal(String.format(cql, STREAMED_RANGES), rangesToUpdate, description, peer, keyspace);
+        executeInternal(String.format(cql, TRANSFERRED_RANGES), rangesToUpdate, description, peer, keyspace);
     }
 
-    public static synchronized Map<InetAddress, Set<Range<Token>>> getStreamedRanges(String description, String keyspace, IPartitioner partitioner)
+    public static synchronized Map<InetAddress, Set<Range<Token>>> getTransferredRanges(String description, String keyspace, IPartitioner partitioner)
     {
         Map<InetAddress, Set<Range<Token>>> result = new HashMap<>();
         String query = "SELECT * FROM system.%s WHERE operation = ? AND keyspace_name = ?";
-        UntypedResultSet rs = executeInternal(String.format(query, STREAMED_RANGES), description, keyspace);
+        UntypedResultSet rs = executeInternal(String.format(query, TRANSFERRED_RANGES), description, keyspace);
         for (UntypedResultSet.Row row : rs)
         {
             InetAddress peer = row.getInetAddress("peer");

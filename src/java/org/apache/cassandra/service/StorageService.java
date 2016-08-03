@@ -3663,11 +3663,11 @@ public class StorageService extends NotificationBroadcasterSupport implements IE
             throw new UnsupportedOperationException("no other normal nodes in the ring; decommission would be pointless");
         if (operationMode != Mode.LEAVING && operationMode != Mode.NORMAL)
             throw new UnsupportedOperationException("Node in " + operationMode + " state; wait for status to become normal or restart");
-        if (isDecommissioning.get())
+        if (isDecommissioning.compareAndSet(true, true))
             throw new IllegalStateException("Node is still decommissioning. Check nodetool netstats.");
 
         if (logger.isDebugEnabled())
-                logger.debug("DECOMMISSIONING");
+            logger.debug("DECOMMISSIONING");
 
         try
         {
@@ -3681,7 +3681,6 @@ public class StorageService extends NotificationBroadcasterSupport implements IE
             startLeaving();
             long timeout = Math.max(RING_DELAY, BatchlogManager.instance.getBatchlogTimeout());
             setMode(Mode.LEAVING, "sleeping " + timeout + " ms for batch processing and pending range setup", true);
-            isDecommissioning.set(true);
             Thread.sleep(timeout);
 
             Runnable finishLeaving = new Runnable()
@@ -3710,7 +3709,7 @@ public class StorageService extends NotificationBroadcasterSupport implements IE
         {
             throw new RuntimeException("Node interrupted while decommissioning");
         }
-        catch (ExecutionError e)
+        catch (ExecutionException e)
         {
             logger.error("Error while decommissioning node ", e.getCause());
             throw new RuntimeException("Error while decommissioning node: " + e.getCause().getMessage());
@@ -3733,7 +3732,7 @@ public class StorageService extends NotificationBroadcasterSupport implements IE
         Uninterruptibles.sleepUninterruptibly(delay, TimeUnit.MILLISECONDS);
     }
 
-    private void unbootstrap(Runnable onFinish)
+    private void unbootstrap(Runnable onFinish) throws ExecutionException, InterruptedException
     {
         Map<String, Multimap<Range<Token>, InetAddress>> rangesToStream = new HashMap<>();
 
@@ -3755,14 +3754,7 @@ public class StorageService extends NotificationBroadcasterSupport implements IE
 
         // Wait for batch log to complete before streaming hints.
         logger.debug("waiting for batch log processing.");
-        try
-        {
-            batchlogReplay.get();
-        }
-        catch (ExecutionException | InterruptedException e)
-        {
-            throw new RuntimeException(e);
-        }
+        batchlogReplay.get();
 
         setMode(Mode.LEAVING, "streaming hints to other nodes", true);
 
@@ -3770,15 +3762,8 @@ public class StorageService extends NotificationBroadcasterSupport implements IE
 
         // wait for the transfer runnables to signal the latch.
         logger.debug("waiting for stream acks.");
-        try
-        {
-            streamSuccess.get();
-            hintsSuccess.get();
-        }
-        catch (ExecutionException | InterruptedException e)
-        {
-            throw new RuntimeException(e);
-        }
+        streamSuccess.get();
+        hintsSuccess.get();
         logger.debug("stream acks all received.");
         leaveRing();
         onFinish.run();
@@ -4517,7 +4502,7 @@ public class StorageService extends NotificationBroadcasterSupport implements IE
             if (rangesWithEndpoints.isEmpty())
                 continue;
 
-            Map<InetAddress, Set<Range<Token>>> streamedRangePerKeyspace = SystemKeyspace.getStreamedRanges("Unbootstrap",
+            Map<InetAddress, Set<Range<Token>>> transfereedRangePerKeyspace = SystemKeyspace.getTransferredRanges("Unbootstrap",
                                                                                                             keyspace,
                                                                                                             StorageService.instance.getTokenMetadata().partitioner);
             Map<InetAddress, List<Range<Token>>> rangesPerEndpoint = new HashMap<>();
@@ -4526,10 +4511,10 @@ public class StorageService extends NotificationBroadcasterSupport implements IE
                 Range<Token> range = endPointEntry.getKey();
                 InetAddress endpoint = endPointEntry.getValue();
 
-                Set<Range<Token>> streamedRanges = streamedRangePerKeyspace.get(endpoint);
-                if (streamedRanges != null && streamedRanges.contains(range))
+                Set<Range<Token>> transferredRanges = transfereedRangePerKeyspace.get(endpoint);
+                if (transferredRanges != null && transferredRanges.contains(range))
                 {
-                    logger.debug("Keyspace {} : Range {} already in {}, skipping", keyspace, range, endpoint);
+                    logger.debug("Skipping transferred range {} of keyspace {}, endpoint {}", range, keyspace, endpoint);
                     continue;
                 }
 

@@ -18,6 +18,7 @@
 package org.apache.cassandra.streaming;
 
 import java.net.InetAddress;
+import java.util.Collections;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -62,7 +63,7 @@ public abstract class StreamEvent
             this.sessionIndex = session.sessionIndex();
             this.requests = ImmutableSet.copyOf(session.requests);
             this.description = session.description();
-            this.transferredRangesPerKeyspace = session.transferredRangesPerKeyspace;
+            this.transferredRangesPerKeyspace = Collections.unmodifiableMap(session.transferredRangesPerKeyspace);
         }
     }
 
