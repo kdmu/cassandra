@@ -4499,6 +4499,7 @@ public class StorageService extends NotificationBroadcasterSupport implements IE
         {
             String keyspace = entry.getKey();
             Multimap<Range<Token>, InetAddress> rangesWithEndpoints = entry.getValue();
+
             if (rangesWithEndpoints.isEmpty())
                 continue;
 

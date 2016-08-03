@@ -251,7 +251,7 @@ public final class SystemKeyspace
 
     private static final CFMetaData TransferredRanges =
         compile(TRANSFERRED_RANGES,
-                "record of streamed ranges for streaming operation",
+                "record of transferred ranges for streaming operation",
                 "CREATE TABLE %s ("
                 + "operation text,"
                 + "peer inet,"
