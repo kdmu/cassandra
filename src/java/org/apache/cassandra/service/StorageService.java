@@ -4503,16 +4503,16 @@ public class StorageService extends NotificationBroadcasterSupport implements IE
             if (rangesWithEndpoints.isEmpty())
                 continue;
 
-            Map<InetAddress, Set<Range<Token>>> transfereedRangePerKeyspace = SystemKeyspace.getTransferredRanges("Unbootstrap",
-                                                                                                            keyspace,
-                                                                                                            StorageService.instance.getTokenMetadata().partitioner);
+            Map<InetAddress, Set<Range<Token>>> transferredRangePerKeyspace = SystemKeyspace.getTransferredRanges("Unbootstrap",
+                                                                                                                  keyspace,
+                                                                                                                  StorageService.instance.getTokenMetadata().partitioner);
             Map<InetAddress, List<Range<Token>>> rangesPerEndpoint = new HashMap<>();
             for (Map.Entry<Range<Token>, InetAddress> endPointEntry : rangesWithEndpoints.entries())
             {
                 Range<Token> range = endPointEntry.getKey();
                 InetAddress endpoint = endPointEntry.getValue();
 
-                Set<Range<Token>> transferredRanges = transfereedRangePerKeyspace.get(endpoint);
+                Set<Range<Token>> transferredRanges = transferredRangePerKeyspace.get(endpoint);
                 if (transferredRanges != null && transferredRanges.contains(range))
                 {
                     logger.debug("Skipping transferred range {} of keyspace {}, endpoint {}", range, keyspace, endpoint);
